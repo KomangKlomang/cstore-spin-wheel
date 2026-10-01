@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C Store · Spin Wheel Opening</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="glow" aria-hidden="true"></div>
+<header>
+  <div class="brand">C STORE <em>OPENING</em></div>
+  <div class="meta">3-DAY SPIN WHEEL · HADIAH DUMMY</div>
+</header>
+<main>
+  <section class="stage" aria-label="Roda undian">
+    <div class="wheel-wrap">
+      <div class="pointer" id="pointer" aria-hidden="true"></div>
+      <canvas id="wheel" width="680" height="680"></canvas>
+      <button id="spinBtn" type="button">PUTAR</button>
+    </div>
+    <div class="base" aria-hidden="true"></div>
+  </section>
+  <aside>
+    <p class="kicker">Slot hadiah</p>
+    <h1>Putar, menang, ambil.</h1>
+    <p class="lede">Isi slot masih dummy: liquid, kaos, dan merchandise lain. Stok hanya tersimpan di browser ini.</p>
+    <ul id="prizeList"></ul>
+    <div class="history">
+      <p>Riwayat spin</p>
+      <ol id="history"></ol>
+    </div>
+    <button id="reset" type="button" class="ghost">Reset stok dummy</button>
+  </aside>
+</main>
+<canvas id="confetti" aria-hidden="true"></canvas>
+<dialog id="result">
+  <p class="kicker">Kamu dapat</p>
+  <h2 id="resultName"></h2>
+  <p id="resultStock"></p>
+  <form method="dialog">
+    <button value="again" class="solid">Putar lagi</button>
+    <button value="close" class="ghost">Tutup</button>
+  </form>
+</dialog>
+<script src="prizes.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
