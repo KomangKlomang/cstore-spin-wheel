@@ -1,17 +1,15 @@
-# C Store · Spin Wheel Opening
+# C Store · Spin Wheel
 
-Roda undian untuk 3-Day Spin Wheel Activity. Hadiah masih **dummy** (liquid, kaos, tumbler, dan merchandise lain) dan stoknya hanya tersimpan di browser.
+Roda undian untuk tiga toko: Paskal, Taruma, dan Duyut. Stok awal mengikuti lembar hadiah masing-masing toko. Sisa stok tersimpan di browser.
+
+Peluang sebuah hadiah mengikuti sisa stoknya. Hadiah yang habis hilang dari roda.
+
+## Staf
+
+Buka `#admin` atau tautan **Staf**. Kode awal: `cstore`. Dari sana stok bisa diubah, dikembalikan ke angka awal, dan satu toko bisa dikunci di layar utama.
 
 ## Jalankan
-
-Buka `index.html`, atau:
 
 ```bash
 python -m http.server 4173
 ```
-
-Lalu buka `http://localhost:4173`.
-
-## Ganti hadiah
-
-Edit `prizes.js`. Tiap item punya `name` (panel), `wheel` (tulisan di roda, baris baru pakai `\n`), `stock`, `color`, dan `ink`.

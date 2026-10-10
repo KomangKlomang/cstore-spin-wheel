@@ -1,268 +1,403 @@
-const STORE = "cstore-spin-dummy-v1";
+const KEY = "cstore-spin-v2";
+const TAU = Math.PI * 2;
+
 const canvas = document.getElementById("wheel");
 const ctx = canvas.getContext("2d");
 const spinBtn = document.getElementById("spinBtn");
 const pointer = document.getElementById("pointer");
-const listEl = document.getElementById("prizeList");
-const historyEl = document.getElementById("history");
 const resultDlg = document.getElementById("result");
-const confetti = document.getElementById("confetti");
-const cctx = confetti.getContext("2d");
 
-const saved = JSON.parse(localStorage.getItem(STORE) || "{}");
-const stock = Object.fromEntries(PRIZES.map((p) => [p.id, saved.stock?.[p.id] ?? p.stock]));
-let history = saved.history || [];
+const saved = load();
+const state = {
+  pin: saved.pin || DEFAULT_PIN,
+  lock: saved.lock || null,
+  choice: saved.choice || null,
+  stock: mergeStock(saved.stock),
+  history: saved.history || { paskal: [], taruma: [], duyut: [] }
+};
 
 let rotation = 0;
 let spinning = false;
-let lastIdx = -1;
+let board = [];
 let audioCtx;
+let adminStore = "paskal";
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY) || "{}"); }
+  catch { return {}; }
+}
+
+function mergeStock(prev) {
+  const stock = {};
+  for (const id of Object.keys(STORES)) {
+    stock[id] = {};
+    for (const prize of STORES[id].prizes) {
+      const kept = prev?.[id]?.[prize.id];
+      stock[id][prize.id] = Number.isFinite(kept) ? kept : prize.stock;
+    }
+  }
+  return stock;
+}
 
 function persist() {
-  localStorage.setItem(STORE, JSON.stringify({ stock, history }));
+  localStorage.setItem(KEY, JSON.stringify({
+    pin: state.pin,
+    lock: state.lock,
+    choice: state.choice,
+    stock: state.stock,
+    history: state.history
+  }));
 }
 
-function renderList() {
-  listEl.innerHTML = PRIZES.map((p) => `
-    <li>
-      <i class="swatch" style="background:${p.color}"></i>
-      <div><strong>${p.name}</strong><span>sisa ${stock[p.id]}</span></div>
-    </li>`).join("");
-  historyEl.innerHTML = history.length
-    ? history.slice(0, 6).map((h) => `<li><em>${h.name}</em></li>`).join("")
-    : "<li>Belum ada spin.</li>";
+function activeStoreId() {
+  return state.lock || state.choice;
 }
 
-function resizeConfetti() {
-  const dpr = window.devicePixelRatio || 1;
-  confetti.width = innerWidth * dpr;
-  confetti.height = innerHeight * dpr;
-  cctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+function qty(storeId, prizeId) {
+  return state.stock[storeId][prizeId] || 0;
+}
+
+function slicesFor(storeId) {
+  return STORES[storeId].prizes.filter((p) => qty(storeId, p.id) > 0);
+}
+
+function sumStock(storeId) {
+  return STORES[storeId].prizes.reduce((n, p) => n + qty(storeId, p.id), 0);
+}
+
+function render() {
+  const admin = location.hash === "#admin";
+  const storeId = activeStoreId();
+  document.getElementById("picker").hidden = admin || !!storeId;
+  document.getElementById("floor").hidden = admin || !storeId;
+  document.getElementById("admin").hidden = !admin;
+  document.getElementById("navLink").textContent = admin ? "Ke roda" : "Staf";
+  document.getElementById("navLink").href = admin ? "#" : "#admin";
+
+  if (!admin && !storeId) {
+    document.getElementById("crumb").textContent = "Pilih toko";
+    renderPicker();
+    return;
+  }
+  if (!admin && storeId) {
+    document.getElementById("crumb").textContent = STORES[storeId].name;
+    renderFloor(storeId);
+    return;
+  }
+  document.getElementById("crumb").textContent = "Panel staf";
+  const authed = sessionStorage.getItem("cstore-staff") === "1";
+  document.getElementById("login").hidden = authed;
+  document.getElementById("panel").hidden = !authed;
+  if (authed) renderAdmin();
+}
+
+function renderPicker() {
+  document.getElementById("storeButtons").innerHTML = Object.entries(STORES).map(([id, store]) => `
+    <button type="button" data-store="${id}">
+      <strong>${store.name}</strong>
+      <span>sisa ${sumStock(id)}</span>
+    </button>`).join("");
+}
+
+function renderFloor(storeId) {
+  const store = STORES[storeId];
+  board = slicesFor(storeId);
+  document.getElementById("storeTitle").textContent = store.name;
+  document.getElementById("remain").textContent = `${sumStock(storeId)} hadiah tersisa. Peluang ikut sisa stok.`;
+  document.getElementById("switchStore").hidden = !!state.lock;
+  document.getElementById("emptyMsg").hidden = board.length > 0;
+  spinBtn.disabled = board.length === 0 || spinning;
+  if (!spinning && rotation === 0 && board.length) {
+    const arc = TAU / board.length;
+    rotation = (TAU - 0.5 * arc) % TAU;
+  }
+  document.getElementById("prizeList").innerHTML = store.prizes.map((p) => {
+    const left = qty(storeId, p.id);
+    return `<li class="${left ? "" : "gone"}">
+      <span class="no">${String(p.no).padStart(2, "0")}</span>
+      <span class="name">${p.name}</span>
+      <span class="qty">${left}</span>
+    </li>`;
+  }).join("");
+  const log = state.history[storeId] || [];
+  document.getElementById("history").innerHTML = log.length
+    ? log.slice(0, 5).map((h) => `<li><span>${h.name}</span></li>`).join("")
+    : "<li>Belum ada.</li>";
+}
+
+function renderAdmin() {
+  document.getElementById("lockRow").innerHTML = [
+    `<button type="button" data-lock="" aria-pressed="${state.lock ? "false" : "true"}">Bebas dipilih</button>`,
+    ...Object.entries(STORES).map(([id, store]) =>
+      `<button type="button" data-lock="${id}" aria-pressed="${state.lock === id ? "true" : "false"}">${store.name}</button>`)
+  ].join("");
+
+  document.getElementById("tabs").innerHTML = Object.entries(STORES).map(([id, store]) =>
+    `<button type="button" role="tab" data-tab="${id}" aria-selected="${adminStore === id ? "true" : "false"}">${store.name}</button>`
+  ).join("");
+
+  const store = STORES[adminStore];
+  document.getElementById("tableCaption").textContent = `Stok ${store.name}`;
+  document.getElementById("stockBody").innerHTML = store.prizes.map((p) => `
+    <tr>
+      <td>${p.no}</td>
+      <td>${p.name}</td>
+      <td>${p.stock}</td>
+      <td><input type="number" min="0" step="1" inputmode="numeric" aria-label="Sisa ${p.name}" data-qty="${p.id}" value="${qty(adminStore, p.id)}"></td>
+    </tr>`).join("");
+
+  const log = state.history[adminStore] || [];
+  document.getElementById("adminHistory").innerHTML = log.length
+    ? log.map((h) => `<li><span>${h.name}</span><span>${h.when}</span></li>`).join("")
+    : "<li>Belum ada.</li>";
 }
 
 function draw(rot) {
   const dpr = window.devicePixelRatio || 1;
-  const size = canvas.clientWidth;
+  const size = canvas.clientWidth || 560;
   canvas.width = Math.round(size * dpr);
   canvas.height = Math.round(size * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, size, size);
-
   const cx = size / 2;
   const cy = size / 2;
-  const R = size / 2 - 26;
-  const n = PRIZES.length;
-  const arc = (Math.PI * 2) / n;
-  const now = performance.now() / 1000;
+  const R = size / 2 - 8;
+  const n = board.length;
 
-  for (let i = 0; i < 28; i++) {
-    const a = -Math.PI / 2 + (i / 28) * Math.PI * 2;
-    const on = Math.floor(now * (spinning ? 14 : 3) + i) % 2 === 0;
-    ctx.beginPath();
-    ctx.arc(cx + Math.cos(a) * (R + 14), cy + Math.sin(a) * (R + 14), size * 0.012, 0, Math.PI * 2);
-    ctx.fillStyle = on ? (i % 2 ? "#FFC93C" : "#FF5A2C") : "#2A3142";
-    ctx.fill();
-  }
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, TAU);
+  ctx.fillStyle = "#2c2824";
+  ctx.fill();
+  if (!n) return;
 
+  const arc = TAU / n;
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(rot);
-  PRIZES.forEach((p, i) => {
+  board.forEach((p, i) => {
     const a0 = -Math.PI / 2 + i * arc;
+    const light = i % 2 === 0;
     ctx.beginPath();
     ctx.moveTo(0, 0);
-    ctx.arc(0, 0, R, a0, a0 + arc);
+    ctx.arc(0, 0, R - 10, a0, a0 + arc);
     ctx.closePath();
-    ctx.fillStyle = p.color;
+    ctx.fillStyle = light ? "#f4efe4" : "#2c2824";
     ctx.fill();
-    ctx.lineWidth = Math.max(2, size * 0.006);
-    ctx.strokeStyle = "#10131A";
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = "#1c1915";
     ctx.stroke();
 
     ctx.save();
     ctx.rotate(a0 + arc / 2);
-    ctx.translate(R * 0.66, 0);
+    ctx.translate((R - 10) * 0.58, 0);
     ctx.rotate(-(rot + a0 + arc / 2));
-    ctx.fillStyle = p.ink;
-    ctx.font = `800 ${Math.round(size * 0.032)}px "Bricolage Grotesque", "Segoe UI", sans-serif`;
+    ctx.fillStyle = light ? "#1c1915" : "#f4efe4";
+    ctx.font = `600 ${Math.max(10, Math.round(size * 0.026))}px "IBM Plex Sans", "Segoe UI", sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const lines = p.wheel.split("\n");
-    const lh = size * 0.038;
-    lines.forEach((ln, li) => {
-      ctx.fillText(ln, 0, (li - (lines.length - 1) / 2) * lh);
-    });
-    ctx.restore();
-
-    ctx.save();
-    ctx.rotate(a0);
-    ctx.beginPath();
-    ctx.arc(R - 2, 0, size * 0.014, 0, Math.PI * 2);
-    ctx.fillStyle = "#10131A";
-    ctx.fill();
+    ctx.fillText(p.short, 0, 0);
     ctx.restore();
   });
-
   ctx.beginPath();
-  ctx.arc(0, 0, R * 0.18, 0, Math.PI * 2);
-  ctx.fillStyle = "#10131A";
+  ctx.arc(0, 0, R * 0.16, 0, TAU);
+  ctx.fillStyle = "#1c1915";
   ctx.fill();
   ctx.restore();
 
-  const gloss = ctx.createRadialGradient(cx - R * 0.25, cy - R * 0.35, R * 0.1, cx, cy, R);
-  gloss.addColorStop(0, "rgba(255,255,255,.22)");
-  gloss.addColorStop(0.45, "rgba(255,255,255,0)");
-  gloss.addColorStop(1, "rgba(0,0,0,.18)");
   ctx.beginPath();
-  ctx.arc(cx, cy, R, 0, Math.PI * 2);
-  ctx.fillStyle = gloss;
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, R + 2, 0, Math.PI * 2);
-  ctx.lineWidth = size * 0.02;
-  ctx.strokeStyle = "#141824";
+  ctx.arc(cx, cy, R - 4, 0, TAU);
+  ctx.lineWidth = Math.max(8, size * 0.02);
+  ctx.strokeStyle = "#1c1915";
   ctx.stroke();
 }
 
-function indexAtPointer(rot) {
-  const arc = (Math.PI * 2) / PRIZES.length;
-  const rel = ((-rot % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-  return Math.floor(rel / arc) % PRIZES.length;
+function indexAtPointer(rot, n) {
+  const arc = TAU / n;
+  const rel = ((-rot % TAU) + TAU) % TAU;
+  return Math.floor(rel / arc) % n;
 }
 
-function tickSound() {
+function tick() {
   if (!audioCtx) return;
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
-  o.frequency.value = 880;
-  g.gain.setValueAtTime(0.04, audioCtx.currentTime);
-  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.04);
+  o.frequency.value = 520;
+  g.gain.setValueAtTime(0.03, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.03);
   o.connect(g);
   g.connect(audioCtx.destination);
   o.start();
-  o.stop(audioCtx.currentTime + 0.05);
-}
-
-function burst(color) {
-  resizeConfetti();
-  const bits = Array.from({ length: 90 }, () => ({
-    x: innerWidth / 2,
-    y: innerHeight * 0.42,
-    vx: (Math.random() - 0.5) * 16,
-    vy: -Math.random() * 14 - 4,
-    g: 0.35,
-    w: 6 + Math.random() * 6,
-    h: 8 + Math.random() * 8,
-    color: [color, "#FFC93C", "#F4EEE3", "#14B8B0", "#FF5A2C"][Math.floor(Math.random() * 5)],
-    life: 70 + Math.random() * 20
-  }));
-  let frame = 0;
-  (function step() {
-    cctx.clearRect(0, 0, innerWidth, innerHeight);
-    bits.forEach((b) => {
-      b.x += b.vx;
-      b.y += b.vy;
-      b.vy += b.g;
-      b.life -= 1;
-      cctx.globalAlpha = Math.max(0, b.life / 80);
-      cctx.fillStyle = b.color;
-      cctx.fillRect(b.x, b.y, b.w, b.h);
-    });
-    cctx.globalAlpha = 1;
-    if (frame++ < 110) requestAnimationFrame(step);
-    else cctx.clearRect(0, 0, innerWidth, innerHeight);
-  })();
+  o.stop(audioCtx.currentTime + 0.04);
 }
 
 function loop() {
-  draw(rotation);
-  if (!spinning) {
-    const idx = indexAtPointer(rotation);
-    if (idx !== lastIdx) {
-      lastIdx = idx;
-    }
-  }
+  if (!document.getElementById("floor").hidden) draw(rotation);
   requestAnimationFrame(loop);
 }
 
 function spin() {
-  if (spinning) return;
+  const storeId = activeStoreId();
+  if (!storeId || spinning) return;
+  board = slicesFor(storeId);
+  if (!board.length) return;
   if (!audioCtx) {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (AC) audioCtx = new AC();
   }
-  audioCtx && audioCtx.resume();
+  if (audioCtx) audioCtx.resume();
+
+  const total = board.reduce((n, p) => n + qty(storeId, p.id), 0);
+  let roll = Math.random() * total;
+  let idx = board.length - 1;
+  for (let i = 0; i < board.length; i++) {
+    roll -= qty(storeId, board[i].id);
+    if (roll < 0) { idx = i; break; }
+  }
+
   spinning = true;
   spinBtn.disabled = true;
-
-  const idx = Math.floor(Math.random() * PRIZES.length);
-  const arc = (Math.PI * 2) / PRIZES.length;
-  const turns = 6 + Math.floor(Math.random() * 2);
-  const current = ((rotation % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-  const desired = ((Math.PI * 2 - (idx + 0.5) * arc) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+  const arc = TAU / board.length;
+  const turns = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 5 + Math.floor(Math.random() * 2);
+  const dur = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 700 : 5200;
+  const current = ((rotation % TAU) + TAU) % TAU;
+  const desired = ((TAU - (idx + 0.5) * arc) % TAU + TAU) % TAU;
   let delta = desired - current;
-  if (delta < 0) delta += Math.PI * 2;
-  delta += turns * Math.PI * 2;
-
+  if (delta < 0) delta += TAU;
+  delta += turns * TAU;
   const from = rotation;
   const start = performance.now();
-  const dur = 5400;
-  let crossed = indexAtPointer(rotation);
+  let crossed = indexAtPointer(rotation, board.length);
 
   (function step(now) {
     const t = Math.min(1, (now - start) / dur);
     const e = 1 - Math.pow(1 - t, 4);
     rotation = from + delta * e;
-    const at = indexAtPointer(rotation);
+    const at = indexAtPointer(rotation, board.length);
     if (at !== crossed) {
       crossed = at;
       pointer.classList.remove("tick");
       void pointer.offsetWidth;
       pointer.classList.add("tick");
-      tickSound();
+      tick();
     }
     if (t < 1) requestAnimationFrame(step);
-    else finish(idx);
+    else finish(storeId, idx);
   })(start);
 }
 
-function finish(idx) {
+function finish(storeId, idx) {
   spinning = false;
-  spinBtn.disabled = false;
-  const prize = PRIZES[idx];
-  stock[prize.id] = Math.max(0, stock[prize.id] - 1);
-  history.unshift({ name: prize.name, at: Date.now() });
-  history = history.slice(0, 12);
+  const prize = board[idx];
+  state.stock[storeId][prize.id] = Math.max(0, qty(storeId, prize.id) - 1);
+  const when = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  state.history[storeId] = [{ name: prize.name, when }, ...(state.history[storeId] || [])].slice(0, 30);
   persist();
-  renderList();
+  render();
+  document.getElementById("resultStore").textContent = STORES[storeId].name;
   document.getElementById("resultName").textContent = prize.name;
-  document.getElementById("resultStock").textContent =
-    stock[prize.id] > 0
-      ? `Sisa stok dummy: ${stock[prize.id]}`
-      : "Stok dummy untuk hadiah ini habis.";
-  burst(prize.color);
+  document.getElementById("resultStock").textContent = `Sisa ${qty(storeId, prize.id)}`;
   resultDlg.showModal();
 }
 
-spinBtn.addEventListener("click", spin);
-document.getElementById("reset").addEventListener("click", () => {
-  PRIZES.forEach((p) => { stock[p.id] = p.stock; });
-  history = [];
+function applyHash() {
+  const hash = location.hash.slice(1);
+  if (STORES[hash] && (!state.lock || state.lock === hash)) state.choice = hash;
+}
+
+document.getElementById("storeButtons").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-store]");
+  if (!btn || state.lock) return;
+  rotation = 0;
+  location.hash = btn.dataset.store;
+});
+
+document.getElementById("switchStore").addEventListener("click", () => {
+  if (state.lock || spinning) return;
+  state.choice = null;
   persist();
-  renderList();
+  location.hash = "";
 });
-resultDlg.addEventListener("close", () => {
-  if (resultDlg.returnValue === "again") spin();
-});
+
+spinBtn.addEventListener("click", spin);
 window.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && !resultDlg.open) {
+  if (e.code === "Space" && !resultDlg.open && location.hash !== "#admin" && activeStoreId()) {
     e.preventDefault();
     spin();
   }
 });
-window.addEventListener("resize", resizeConfetti);
+resultDlg.addEventListener("close", () => {
+  if (resultDlg.returnValue === "again") spin();
+});
 
-renderList();
-resizeConfetti();
+document.getElementById("login").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const value = document.getElementById("pin").value;
+  const ok = value === state.pin;
+  document.getElementById("loginError").hidden = ok;
+  if (!ok) return;
+  sessionStorage.setItem("cstore-staff", "1");
+  document.getElementById("pin").value = "";
+  render();
+});
+
+document.getElementById("logout").addEventListener("click", () => {
+  sessionStorage.removeItem("cstore-staff");
+  render();
+});
+
+document.getElementById("lockRow").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-lock]");
+  if (!btn) return;
+  state.lock = btn.dataset.lock || null;
+  if (state.lock) state.choice = state.lock;
+  persist();
+  render();
+});
+
+document.getElementById("tabs").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-tab]");
+  if (!btn) return;
+  adminStore = btn.dataset.tab;
+  renderAdmin();
+});
+
+document.getElementById("stockBody").addEventListener("change", (e) => {
+  const input = e.target.closest("[data-qty]");
+  if (!input || spinning) return;
+  const next = Math.max(0, parseInt(input.value, 10) || 0);
+  input.value = String(next);
+  state.stock[adminStore][input.dataset.qty] = next;
+  persist();
+});
+
+document.getElementById("resetStore").addEventListener("click", () => {
+  const store = STORES[adminStore];
+  if (!window.confirm(`Kembalikan stok ${store.name} ke angka awal?`)) return;
+  for (const prize of store.prizes) state.stock[adminStore][prize.id] = prize.stock;
+  persist();
+  renderAdmin();
+});
+
+document.getElementById("clearHistory").addEventListener("click", () => {
+  state.history[adminStore] = [];
+  persist();
+  renderAdmin();
+});
+
+document.getElementById("pinForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  state.pin = document.getElementById("newPin").value;
+  persist();
+  document.getElementById("newPin").value = "";
+  const note = document.getElementById("pinSaved");
+  note.hidden = false;
+});
+
+window.addEventListener("hashchange", () => {
+  applyHash();
+  persist();
+  render();
+});
+applyHash();
+render();
 document.fonts.ready.then(loop);
