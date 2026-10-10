@@ -36,11 +36,15 @@ const cctx = confetti.getContext("2d");
 
 let rotation = 0;
 let spinning = false;
+let spinRaf = 0;
+let spinToken = 0;
+let suppressSpinOnClose = false;
 let colorOf = {};
 let lastHit = null;
 let board = [];
 let audioCtx;
 let adminStore = "paskal";
+const switchStoreBtn = document.getElementById("switchStore");
 
 function load() {
   try { return JSON.parse(localStorage.getItem(KEY) || "{}"); }
@@ -137,7 +141,9 @@ function renderFloor(storeId) {
   document.getElementById("storeTitle").textContent = store.name;
   document.getElementById("statLeft").textContent = sumStock(storeId);
   document.getElementById("statKinds").textContent = board.length;
-  document.getElementById("switchStore").hidden = !!state.lock;
+  switchStoreBtn.hidden = !!state.lock;
+  switchStoreBtn.disabled = spinning;
+  switchStoreBtn.setAttribute("aria-busy", spinning ? "true" : "false");
   document.getElementById("emptyMsg").hidden = board.length > 0;
   spinBtn.disabled = board.length === 0 || spinning;
   if (!spinning && rotation === 0 && board.length) {
@@ -373,11 +379,25 @@ function loop() {
   requestAnimationFrame(loop);
 }
 
+function stopSpinAnimation() {
+  spinToken += 1;
+  if (spinRaf) cancelAnimationFrame(spinRaf);
+  spinRaf = 0;
+  spinning = false;
+}
+
+function closeResultDialog(suppressRespin) {
+  if (!resultDlg.open) return;
+  if (suppressRespin) suppressSpinOnClose = true;
+  resultDlg.close();
+}
+
 function spin() {
   const storeId = activeStoreId();
   if (!storeId || spinning) return;
   board = slicesFor(storeId);
   if (!board.length) return;
+  const token = ++spinToken;
   if (!audioCtx) {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (AC) audioCtx = new AC();
@@ -407,6 +427,7 @@ function spin() {
   let crossed = indexAtPointer(rotation, board.length);
 
   (function step(now) {
+    if (token !== spinToken) return;
     const t = Math.min(1, (now - start) / dur);
     const e = 1 - Math.pow(1 - t, 4);
     rotation = from + delta * e;
@@ -418,14 +439,20 @@ function spin() {
       pointer.classList.add("tick");
       tick();
     }
-    if (t < 1) requestAnimationFrame(step);
-    else finish(storeId, idx);
+    if (t < 1) {
+      spinRaf = requestAnimationFrame(step);
+    } else if (token === spinToken) {
+      finish(storeId, idx, token);
+    }
   })(start);
 }
 
-function finish(storeId, idx) {
+function finish(storeId, idx, token) {
+  if (token !== spinToken) return;
   spinning = false;
+  spinRaf = 0;
   const prize = board[idx];
+  if (!prize) return;
   const [band] = colorOf[prize.id] || PALETTE[0];
   lastHit = prize.id;
   state.stock[storeId][prize.id] = Math.max(0, qty(storeId, prize.id) - 1);
@@ -462,8 +489,9 @@ function clearStoreHash() {
 }
 
 function goToPicker() {
-  if (state.lock || spinning) return;
-  if (resultDlg.open) resultDlg.close();
+  if (state.lock) return;
+  stopSpinAnimation();
+  closeResultDialog(true);
   state.choice = null;
   rotation = 0;
   lastHit = null;
@@ -476,8 +504,8 @@ function goToPicker() {
 function goToStore(storeId) {
   if (!STORES[storeId]) return;
   if (state.lock && state.lock !== storeId) return;
-  if (spinning) return;
-  if (resultDlg.open) resultDlg.close();
+  stopSpinAnimation();
+  closeResultDialog(true);
   rotation = 0;
   lastHit = null;
   state.choice = storeId;
@@ -511,7 +539,11 @@ window.addEventListener("keydown", (e) => {
   }
 });
 resultDlg.addEventListener("close", () => {
-  if (resultDlg.returnValue === "again") spin();
+  if (suppressSpinOnClose) {
+    suppressSpinOnClose = false;
+    return;
+  }
+  if (resultDlg.returnValue === "again" && activeStoreId() && !state.lock) spin();
 });
 
 document.getElementById("login").addEventListener("submit", (e) => {
