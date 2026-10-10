@@ -3,110 +3,137 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>C Store · Spin Wheel</title>
+<title>C Store · Spin Wheel Opening</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header>
-  <div>
-    <p class="brand">C Store</p>
-    <p id="crumb" class="crumb">Spin wheel</p>
-  </div>
-  <a id="navLink" href="#admin">Staf</a>
+<div class="backdrop" aria-hidden="true">
+  <span class="glow glow-a"></span>
+  <span class="glow glow-b"></span>
+</div>
+
+<header class="topbar">
+  <a class="brand" href="#">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span>C STORE <em>OPENING</em></span>
+  </a>
+  <p id="crumb" class="crumb">Spin wheel</p>
+  <a id="navLink" class="nav-link" href="#admin">Staf</a>
 </header>
 
-<section id="picker">
-  <h1>Pilih toko</h1>
-  <p class="note">Hadiah dan stok mengikuti lembar masing-masing toko.</p>
-  <div id="storeButtons" class="store-list"></div>
+<section id="picker" class="view">
+  <p class="kicker">3-Day Spin Wheel</p>
+  <h1 class="display">Pilih toko<br>untuk mulai.</h1>
+  <p class="lede">Setiap toko punya daftar hadiah dan stok sendiri.</p>
+  <div id="storeButtons" class="store-grid"></div>
 </section>
 
-<main id="floor" hidden>
+<main id="floor" class="view floor" hidden>
   <section class="stage" aria-label="Roda undian">
     <div class="wheel-wrap">
+      <div class="halo" aria-hidden="true"></div>
       <div class="pointer" id="pointer" aria-hidden="true"></div>
       <canvas id="wheel" width="640" height="640"></canvas>
-      <button id="spinBtn" type="button">Putar</button>
+      <button id="spinBtn" type="button"><span>PUTAR</span></button>
     </div>
-    <p id="emptyMsg" class="empty" hidden>Stok hadiah toko ini habis.</p>
+    <div class="stand" aria-hidden="true"></div>
+    <p id="emptyMsg" class="empty" hidden>Stok hadiah toko ini habis. Hubungi staf.</p>
   </section>
-  <aside>
-    <h1 id="storeTitle">Toko</h1>
-    <p id="remain" class="note"></p>
-    <ul id="prizeList"></ul>
+
+  <aside class="side">
+    <p class="kicker">Toko</p>
+    <h1 id="storeTitle" class="display">Toko</h1>
+    <div class="stats">
+      <div class="stat"><b id="statLeft">0</b><span>hadiah tersisa</span></div>
+      <div class="stat"><b id="statKinds">0</b><span>jenis hadiah</span></div>
+    </div>
+    <ul id="prizeList" class="prize-list"></ul>
     <div class="history">
-      <p>Terakhir</p>
+      <p class="label">Pemenang terakhir</p>
       <ol id="history"></ol>
     </div>
-    <button id="switchStore" type="button" class="text-btn">Ganti toko</button>
+    <button id="switchStore" type="button" class="ghost">Ganti toko</button>
   </aside>
 </main>
 
-<section id="admin" hidden>
-  <form id="login" class="login">
-    <h1>Panel staf</h1>
+<section id="admin" class="view admin" hidden>
+  <form id="login" class="card login">
+    <p class="kicker">Khusus staf</p>
+    <h1 class="display small">Panel staf</h1>
     <label for="pin">Kode staf</label>
     <input id="pin" name="pin" type="password" autocomplete="current-password" required>
     <p id="loginError" class="error" hidden>Kode tidak sesuai.</p>
-    <button type="submit">Masuk</button>
+    <button type="submit" class="solid">Masuk</button>
   </form>
 
   <div id="panel" hidden>
     <div class="panel-head">
-      <h1>Stok hadiah</h1>
-      <button id="logout" type="button" class="text-btn">Keluar</button>
+      <div>
+        <p class="kicker">Panel staf</p>
+        <h1 class="display small">Stok hadiah</h1>
+      </div>
+      <button id="logout" type="button" class="ghost">Keluar</button>
     </div>
-    <p class="note">Perubahan tersimpan di browser ini. Peluang menang mengikuti sisa stok.</p>
+    <p class="lede">Perubahan tersimpan di browser ini. Peluang menang mengikuti sisa stok.</p>
 
-    <fieldset>
-      <legend>Toko di layar utama</legend>
-      <div class="lock-row" id="lockRow"></div>
-    </fieldset>
-
-    <div class="tabs" id="tabs" role="tablist"></div>
-    <div class="table-wrap">
-      <table>
-        <caption id="tableCaption">Stok</caption>
-        <thead>
-          <tr>
-            <th scope="col">No</th>
-            <th scope="col">Hadiah</th>
-            <th scope="col">Awal</th>
-            <th scope="col">Sisa</th>
-          </tr>
-        </thead>
-        <tbody id="stockBody"></tbody>
-      </table>
-    </div>
-    <div class="row-actions">
-      <button id="resetStore" type="button">Kembalikan stok awal toko ini</button>
+    <div class="card">
+      <p class="label">Toko di layar utama</p>
+      <div class="chip-row" id="lockRow"></div>
     </div>
 
-    <h2>Riwayat toko ini</h2>
-    <ol id="adminHistory"></ol>
-    <button id="clearHistory" type="button" class="text-btn">Hapus riwayat</button>
+    <div class="card">
+      <div class="chip-row tabs" id="tabs" role="tablist"></div>
+      <div class="table-wrap">
+        <table>
+          <caption id="tableCaption">Stok</caption>
+          <thead>
+            <tr>
+              <th scope="col">No</th>
+              <th scope="col">Hadiah</th>
+              <th scope="col">Awal</th>
+              <th scope="col">Sisa</th>
+            </tr>
+          </thead>
+          <tbody id="stockBody"></tbody>
+        </table>
+      </div>
+      <button id="resetStore" type="button" class="ghost">Kembalikan stok awal toko ini</button>
+    </div>
 
-    <form id="pinForm" class="pin-form">
-      <h2>Ganti kode staf</h2>
-      <label for="newPin">Kode baru</label>
-      <input id="newPin" type="password" autocomplete="new-password" minlength="4" required>
-      <button type="submit">Simpan kode</button>
-      <p id="pinSaved" class="note" hidden>Kode diperbarui.</p>
-    </form>
+    <div class="admin-grid">
+      <div class="card">
+        <p class="label">Riwayat toko ini</p>
+        <ol id="adminHistory"></ol>
+        <button id="clearHistory" type="button" class="ghost">Hapus riwayat</button>
+      </div>
+      <form id="pinForm" class="card">
+        <p class="label">Ganti kode staf</p>
+        <label for="newPin">Kode baru</label>
+        <input id="newPin" type="password" autocomplete="new-password" minlength="4" required>
+        <button type="submit" class="solid">Simpan kode</button>
+        <p id="pinSaved" class="lede" hidden>Kode diperbarui.</p>
+      </form>
+    </div>
   </div>
 </section>
 
+<canvas id="confetti" aria-hidden="true"></canvas>
+
 <dialog id="result">
-  <p class="note" id="resultStore"></p>
-  <h2 id="resultName"></h2>
-  <p id="resultStock"></p>
-  <form method="dialog">
-    <button value="again">Putar lagi</button>
-    <button value="close" class="text-btn">Tutup</button>
-  </form>
+  <div class="result-band" id="resultBand"></div>
+  <div class="result-body">
+    <p class="kicker" id="resultStore"></p>
+    <p class="result-lead">Selamat, kamu dapat</p>
+    <h2 id="resultName"></h2>
+    <p id="resultStock" class="result-stock"></p>
+    <form method="dialog">
+      <button value="again" class="solid">Putar lagi</button>
+      <button value="close" class="ghost dark">Tutup</button>
+    </form>
+  </div>
 </dialog>
 
 <script src="prizes.js"></script>
