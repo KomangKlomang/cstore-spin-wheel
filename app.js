@@ -92,7 +92,7 @@ function render() {
   document.getElementById("floor").hidden = admin || !storeId;
   document.getElementById("admin").hidden = !admin;
   document.getElementById("navLink").textContent = admin ? "Ke roda" : "Staf";
-  document.getElementById("navLink").href = admin ? "#" : "#admin";
+  document.getElementById("navLink").href = admin ? location.pathname + location.search : "#admin";
 
   if (!admin && !storeId) {
     document.getElementById("crumb").textContent = "Pilih toko";
@@ -446,21 +446,61 @@ function finish(storeId, idx) {
 
 function applyHash() {
   const hash = location.hash.slice(1);
-  if (STORES[hash] && (!state.lock || state.lock === hash)) state.choice = hash;
+  if (hash === "admin") return;
+  if (STORES[hash] && (!state.lock || state.lock === hash)) {
+    state.choice = hash;
+  } else if (!state.lock) {
+    state.choice = null;
+  }
+}
+
+function clearStoreHash() {
+  const base = location.pathname + location.search;
+  if (location.hash && location.hash !== "#admin") {
+    history.replaceState(null, "", base);
+  }
+}
+
+function goToPicker() {
+  if (state.lock || spinning) return;
+  if (resultDlg.open) resultDlg.close();
+  state.choice = null;
+  rotation = 0;
+  lastHit = null;
+  board = [];
+  persist();
+  clearStoreHash();
+  render();
+}
+
+function goToStore(storeId) {
+  if (!STORES[storeId]) return;
+  if (state.lock && state.lock !== storeId) return;
+  if (spinning) return;
+  if (resultDlg.open) resultDlg.close();
+  rotation = 0;
+  lastHit = null;
+  state.choice = storeId;
+  persist();
+  const target = `#${storeId}`;
+  if (location.hash !== target) location.hash = storeId;
+  else render();
 }
 
 document.getElementById("storeButtons").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-store]");
   if (!btn || state.lock) return;
-  rotation = 0;
-  location.hash = btn.dataset.store;
+  goToStore(btn.dataset.store);
 });
 
 document.getElementById("switchStore").addEventListener("click", () => {
-  if (state.lock || spinning) return;
-  state.choice = null;
-  persist();
-  location.hash = "";
+  goToPicker();
+});
+
+document.querySelector(".brand").addEventListener("click", (e) => {
+  if (location.hash === "#admin") return;
+  e.preventDefault();
+  goToPicker();
 });
 
 spinBtn.addEventListener("click", spin);
@@ -494,9 +534,11 @@ document.getElementById("lockRow").addEventListener("click", (e) => {
   const btn = e.target.closest("[data-lock]");
   if (!btn) return;
   state.lock = btn.dataset.lock || null;
-  if (state.lock) state.choice = state.lock;
-  persist();
-  render();
+  if (state.lock) goToStore(state.lock);
+  else {
+    persist();
+    render();
+  }
 });
 
 document.getElementById("tabs").addEventListener("click", (e) => {
@@ -539,6 +581,13 @@ document.getElementById("pinForm").addEventListener("submit", (e) => {
 });
 
 window.addEventListener("resize", resizeConfetti);
+document.getElementById("navLink").addEventListener("click", (e) => {
+  if (location.hash === "#admin") {
+    e.preventDefault();
+    goToPicker();
+  }
+});
+
 window.addEventListener("hashchange", () => {
   applyHash();
   persist();
