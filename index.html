@@ -107,7 +107,7 @@
       <div class="card">
         <p class="label">Riwayat toko ini</p>
         <ol id="adminHistory"></ol>
-        <button id="clearHistory" type="button" class="ghost">Hapus riwayat</button>
+        <button id="clearHistory" type="button" class="ghost">Hapus riwayat tampilan</button>
       </div>
       <form id="pinForm" class="card">
         <p class="label">Ganti kode staf</p>
@@ -116,6 +116,17 @@
         <button type="submit" class="solid">Simpan kode</button>
         <p id="pinSaved" class="lede" hidden>Kode diperbarui.</p>
       </form>
+    </div>
+
+    <div class="card log-export">
+      <p class="label">Arsip spin · spreadsheet</p>
+      <p class="lede">Setiap putar tercatat otomatis. Reset stok atau hapus riwayat tampilan tidak menghapus arsip ini.</p>
+      <p id="spinLogStats" class="note">0 catatan arsip</p>
+      <div class="export-actions">
+        <button id="downloadLogAll" type="button" class="solid">Unduh CSV (semua toko)</button>
+        <button id="downloadLogStore" type="button" class="ghost">Unduh toko ini saja</button>
+      </div>
+      <button id="clearSpinLog" type="button" class="ghost">Hapus arsip di browser</button>
     </div>
   </div>
 </section>

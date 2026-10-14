@@ -13,7 +13,8 @@ const state = {
   lock: saved.lock || null,
   choice: saved.choice || null,
   stock: mergeStock(saved.stock),
-  history: saved.history || { paskal: [], taruma: [], duyut: [] }
+  history: saved.history || { paskal: [], taruma: [], duyut: [] },
+  spinLog: Array.isArray(saved.spinLog) ? saved.spinLog : []
 };
 
 const PALETTE = [
@@ -69,8 +70,63 @@ function persist() {
     lock: state.lock,
     choice: state.choice,
     stock: state.stock,
-    history: state.history
+    history: state.history,
+    spinLog: state.spinLog
   }));
+}
+
+const SPIN_LOG_MAX = 8000;
+
+function appendSpinLog(storeId, prize) {
+  const now = new Date();
+  state.spinLog.push({
+    at: now.toISOString(),
+    date: now.toLocaleDateString("id-ID"),
+    time: now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+    storeId,
+    store: STORES[storeId].name,
+    prizeId: prize.id,
+    prize: prize.name,
+    stockLeft: qty(storeId, prize.id),
+    storeStockLeft: sumStock(storeId)
+  });
+  if (state.spinLog.length > SPIN_LOG_MAX) {
+    state.spinLog = state.spinLog.slice(-SPIN_LOG_MAX);
+  }
+}
+
+function csvCell(value) {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function downloadSpinLog(filterStoreId) {
+  const rows = filterStoreId
+    ? state.spinLog.filter((row) => row.storeId === filterStoreId)
+    : state.spinLog.slice();
+  if (!rows.length) {
+    window.alert("Belum ada data spin untuk diunduh.");
+    return;
+  }
+  const header = ["No", "Tanggal", "Waktu", "Toko", "Hadiah", "Sisa hadiah", "Sisa total toko"];
+  const body = rows.map((row, index) => [
+    index + 1,
+    row.date,
+    row.time,
+    row.store,
+    row.prize,
+    row.stockLeft,
+    row.storeStockLeft
+  ].map(csvCell).join(","));
+  const csv = "\uFEFF" + [header.join(","), ...body].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const stamp = new Date().toISOString().slice(0, 10);
+  const slug = filterStoreId ? STORES[filterStoreId].name.replace(/\s+/g, "-").toLowerCase() : "semua-toko";
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `cstore-spin-${slug}-${stamp}.csv`;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function activeStoreId() {
@@ -191,6 +247,10 @@ function renderAdmin() {
   document.getElementById("adminHistory").innerHTML = log.length
     ? log.map((h) => `<li><span>${h.name}</span><span>${h.when}</span></li>`).join("")
     : "<li>Belum ada.</li>";
+
+  const storeRows = state.spinLog.filter((row) => row.storeId === adminStore).length;
+  document.getElementById("spinLogStats").textContent =
+    `${state.spinLog.length} catatan arsip · ${storeRows} untuk ${store.name}`;
 }
 
 function draw(rot) {
@@ -456,6 +516,7 @@ function finish(storeId, idx, token) {
   const [band] = colorOf[prize.id] || PALETTE[0];
   lastHit = prize.id;
   state.stock[storeId][prize.id] = Math.max(0, qty(storeId, prize.id) - 1);
+  appendSpinLog(storeId, prize);
   const when = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
   state.history[storeId] = [{ name: prize.name, when }, ...(state.history[storeId] || [])].slice(0, 30);
   persist();
@@ -599,6 +660,22 @@ document.getElementById("resetStore").addEventListener("click", () => {
 
 document.getElementById("clearHistory").addEventListener("click", () => {
   state.history[adminStore] = [];
+  persist();
+  renderAdmin();
+});
+
+document.getElementById("downloadLogAll").addEventListener("click", () => {
+  downloadSpinLog(null);
+});
+
+document.getElementById("downloadLogStore").addEventListener("click", () => {
+  downloadSpinLog(adminStore);
+});
+
+document.getElementById("clearSpinLog").addEventListener("click", () => {
+  if (!state.spinLog.length) return;
+  if (!window.confirm("Hapus semua arsip spin di browser ini? File yang sudah diunduh tidak terpengaruh.")) return;
+  state.spinLog = [];
   persist();
   renderAdmin();
 });
