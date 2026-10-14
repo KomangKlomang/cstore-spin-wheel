@@ -3,7 +3,7 @@
 Roda undian untuk tiga toko: **Paskal**, **Taruma**, dan **Duyut**.
 
 - **Stok & daftar hadiah** — per browser/tablet (localStorage): ubah nama, tambah/hapus item, atur sisa stok di panel staf.
-- **Arsip setiap spin** — disimpan di **Vercel KV** (server), gabungan semua perangkat.
+- **Arsip setiap spin** — disimpan di **Vercel Blob** (server), gabungan semua perangkat.
 
 Peluang menang mengikuti sisa stok. Hadiah yang habis hilang dari roda.
 
@@ -16,7 +16,7 @@ Production: **https://cstore-spin-wheel.vercel.app** (bukan GitHub Pages).
 Jika setup ulang:
 
 1. Import repo `KomangKlomang/cstore-spin-wheel` di [vercel.com](https://vercel.com).
-2. **Storage → Marketplace → Upstash Redis** (gratis) → **Connect** ke project ini (`KV_*` env otomatis).
+2. **Storage → Blob** → buat store & connect ke project (`BLOB_READ_WRITE_TOKEN` otomatis).
 3. Env `SPIN_ADMIN_KEY` = `cstore` (sama dengan kode staf panel).
 4. Redeploy setelah Redis terhubung.
 

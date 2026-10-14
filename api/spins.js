@@ -1,6 +1,6 @@
-import { kv } from "@vercel/kv";
+import { list, put } from "@vercel/blob";
 
-const LIST_KEY = "cstore:spin:archive";
+const ARCHIVE_PATH = "spin-archive/entries.jsonl";
 const MAX_ROWS = 8000;
 const STORES = new Set(["paskal", "taruma", "duyut"]);
 
@@ -28,10 +28,6 @@ function rowsToCsv(rows) {
   return [header.join(","), ...body].join("\r\n");
 }
 
-function parseRows(raw) {
-  return raw.map((line) => JSON.parse(line));
-}
-
 function validateEntry(entry) {
   if (!entry || typeof entry !== "object") return false;
   if (!STORES.has(entry.storeId)) return false;
@@ -39,6 +35,43 @@ function validateEntry(entry) {
   if (typeof entry.prize !== "string" || !entry.prize) return false;
   if (typeof entry.store !== "string" || !entry.store) return false;
   return true;
+}
+
+function parseArchiveText(text) {
+  if (!text?.trim()) return [];
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+}
+
+async function readArchive() {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) throw new Error("blob_not_configured");
+
+  const found = await list({ prefix: "spin-archive/", limit: 10, token });
+  const blob = found.blobs.find((b) => b.pathname === ARCHIVE_PATH) || found.blobs[0];
+  if (!blob?.url) return [];
+
+  const res = await fetch(blob.url);
+  if (!res.ok) throw new Error("blob_read_failed");
+  return parseArchiveText(await res.text());
+}
+
+async function writeArchive(rows) {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  if (!token) throw new Error("blob_not_configured");
+
+  const trimmed = rows.slice(-MAX_ROWS);
+  const body = trimmed.map((row) => JSON.stringify(row)).join("\n");
+  await put(ARCHIVE_PATH, body, {
+    access: "private",
+    token,
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    contentType: "text/plain; charset=utf-8"
+  });
+  return trimmed;
 }
 
 export default async function handler(req, res) {
@@ -55,8 +88,9 @@ export default async function handler(req, res) {
       if (!validateEntry(entry)) {
         return res.status(400).json({ error: "invalid payload" });
       }
-      await kv.lpush(LIST_KEY, JSON.stringify(entry));
-      await kv.ltrim(LIST_KEY, 0, MAX_ROWS - 1);
+      const rows = await readArchive();
+      rows.push(entry);
+      await writeArchive(rows);
       return res.status(201).json({ ok: true });
     }
 
@@ -66,8 +100,7 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: "unauthorized" });
       }
 
-      const raw = await kv.lrange(LIST_KEY, 0, -1);
-      const all = parseRows(raw);
+      const all = await readArchive();
 
       if (req.query.stats === "1") {
         const byStore = { paskal: 0, taruma: 0, duyut: 0 };
@@ -82,7 +115,6 @@ export default async function handler(req, res) {
       if (store && STORES.has(store)) {
         rows = rows.filter((row) => row.storeId === store);
       }
-      rows.reverse();
 
       if (req.query.format === "csv") {
         const slug = store || "semua-toko";
@@ -102,16 +134,17 @@ export default async function handler(req, res) {
       if (!adminKeyOk(req.query.key)) {
         return res.status(401).json({ error: "unauthorized" });
       }
-      await kv.del(LIST_KEY);
+      await writeArchive([]);
       return res.status(200).json({ ok: true });
     }
 
     return res.status(405).json({ error: "method not allowed" });
   } catch (err) {
     console.error("spin archive api", err);
-    const missingKv = /KV|REST|redis/i.test(String(err.message));
+    const msg = String(err.message || err);
+    const missingBlob = /blob_not_configured|BLOB_READ_WRITE_TOKEN/i.test(msg);
     return res.status(500).json({
-      error: missingKv ? "kv_not_configured" : "server_error"
+      error: missingBlob ? "storage_not_configured" : "server_error"
     });
   }
 }

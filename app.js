@@ -191,7 +191,7 @@ async function refreshArchiveStats() {
     const storeRows = data.byStore[adminStore] || 0;
     el.textContent = `${data.total} catatan di server · ${storeRows} untuk ${STORES[adminStore].name}`;
   } catch {
-    el.textContent = "Arsip server belum aktif — host di Vercel + hubungkan KV (lihat README).";
+    el.textContent = "Arsip server belum aktif — pastikan deploy Vercel + Blob Storage terhubung.";
   }
 }
 
@@ -219,7 +219,7 @@ async function downloadArchiveCsv(filterStoreId) {
     link.click();
     URL.revokeObjectURL(link.href);
   } catch {
-    window.alert("Gagal unduh dari server. Pastikan situs di-deploy di Vercel dengan KV terhubung.");
+    window.alert("Gagal unduh dari server. Coba lagi sebentar; jika masih gagal, redeploy project Vercel.");
   }
 }
 
