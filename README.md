@@ -1,19 +1,41 @@
 # C Store · Spin Wheel
 
-Roda undian untuk tiga toko: Paskal, Taruma, dan Duyut. Stok awal mengikuti lembar hadiah masing-masing toko. Sisa stok tersimpan di browser.
+Roda undian untuk tiga toko: **Paskal**, **Taruma**, dan **Duyut**.
 
-Peluang sebuah hadiah mengikuti sisa stoknya. Hadiah yang habis hilang dari roda.
+- **Stok & daftar hadiah** — per browser/tablet (localStorage): ubah nama, tambah/hapus item, atur sisa stok di panel staf.
+- **Arsip setiap spin** — disimpan di **Vercel KV** (server), gabungan semua perangkat.
 
-## Staf
+Peluang menang mengikuti sisa stok. Hadiah yang habis hilang dari roda.
 
-Buka `#admin` atau tautan **Staf**. Kode awal: `cstore`. Dari sana stok bisa diubah, dikembalikan ke angka awal, dan satu toko bisa dikunci di layar utama.
+## Deploy di Vercel (disarankan)
 
-## Arsip spin (CSV)
+GitHub Pages **tidak** menjalankan API arsip. Host project ini di Vercel.
 
-Setiap putar disimpan di **Arsip spin** (localStorage browser). Unduh sebagai `.csv` (bisa dibuka di Excel). Reset stok tidak menghapus arsip; **Hapus riwayat tampilan** hanya membersihkan daftar singkat di panel.
+1. Buka [vercel.com](https://vercel.com) → **Add New Project** → import repo `cstore-spin-wheel`.
+2. **Storage** → **Create Database** → **KV** → Connect ke project yang sama (variabel `KV_*` terisi otomatis).
+3. **Settings → Environment Variables** → tambah:
+   - `SPIN_ADMIN_KEY` = `cstore` (samakan dengan kode staf panel; ganti jika Anda ubah kode di panel **dan** di Vercel).
+4. Deploy. URL production (mis. `https://cstore-spin-wheel.vercel.app`) dipakai untuk semua tablet.
 
-## Jalankan
+### Arsip spin
+
+| Aksi | Cara |
+|------|------|
+| Catat spin | Otomatis `POST /api/spins` setiap hadiah keluar |
+| Unduh CSV | Panel staf → **Unduh CSV** (pakai kode staf = `SPIN_ADMIN_KEY`) |
+| Hapus arsip server | Panel staf → **Hapus arsip di server** |
+
+Kolom CSV: No, Tanggal, Waktu, Toko, Hadiah, Sisa hadiah, Sisa total toko.
+
+## Panel staf
+
+Buka `#admin` atau tautan **Staf**. Kode awal: `cstore`.
+
+## Lokal
 
 ```bash
-python -m http.server 4173
+npm install
+npx vercel dev
 ```
+
+Butuh KV di project Vercel (link lewat CLI) agar arsip jalan di lokal.

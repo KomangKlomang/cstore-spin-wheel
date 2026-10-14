@@ -8,14 +8,17 @@ const pointer = document.getElementById("pointer");
 const resultDlg = document.getElementById("result");
 
 const saved = load();
+const bootPrizes = mergePrizes(saved.prizes);
 const state = {
   pin: saved.pin || DEFAULT_PIN,
   lock: saved.lock || null,
   choice: saved.choice || null,
-  stock: mergeStock(saved.stock),
-  history: saved.history || { paskal: [], taruma: [], duyut: [] },
-  spinLog: Array.isArray(saved.spinLog) ? saved.spinLog : []
+  prizes: bootPrizes,
+  stock: mergeStock(saved.stock, bootPrizes),
+  history: saved.history || { paskal: [], taruma: [], duyut: [] }
 };
+
+const ARCHIVE_API = "/api/spins";
 
 const PALETTE = [
   ["#FF5A2C", "#FFF8F4"],
@@ -52,16 +55,86 @@ function load() {
   catch { return {}; }
 }
 
-function mergeStock(prev) {
+function shortFromName(name) {
+  return String(name || "HADIAH").toUpperCase().replace(/\s+/g, " ").trim().slice(0, 24);
+}
+
+function clonePrize(p, no) {
+  return {
+    id: p.id,
+    name: p.name,
+    short: p.short || shortFromName(p.name),
+    stock: p.stock,
+    no
+  };
+}
+
+function normalizePrize(saved, def, no) {
+  const name = (saved.name ?? def?.name ?? "Hadiah").trim() || "Hadiah";
+  return {
+    id: saved.id,
+    name,
+    short: saved.short || def?.short || shortFromName(name),
+    stock: Number.isFinite(saved.stock) ? saved.stock : (def?.stock ?? 0),
+    no
+  };
+}
+
+function mergePrizes(prev) {
+  const prizes = {};
+  for (const storeId of Object.keys(STORES)) {
+    const defaults = STORES[storeId].prizes;
+    const saved = prev?.[storeId];
+    if (!Array.isArray(saved) || !saved.length) {
+      prizes[storeId] = defaults.map((p, i) => clonePrize(p, i + 1));
+      continue;
+    }
+    const defMap = Object.fromEntries(defaults.map((p) => [p.id, p]));
+    const seen = new Set();
+    const list = [];
+    for (const row of saved) {
+      if (!row?.id || seen.has(row.id)) continue;
+      seen.add(row.id);
+      list.push(normalizePrize(row, defMap[row.id], list.length + 1));
+    }
+    for (const def of defaults) {
+      if (!seen.has(def.id)) list.push(clonePrize(def, list.length + 1));
+    }
+    list.forEach((p, i) => { p.no = i + 1; });
+    prizes[storeId] = list;
+  }
+  return prizes;
+}
+
+function mergeStock(prev, prizes) {
   const stock = {};
-  for (const id of Object.keys(STORES)) {
-    stock[id] = {};
-    for (const prize of STORES[id].prizes) {
-      const kept = prev?.[id]?.[prize.id];
-      stock[id][prize.id] = Number.isFinite(kept) ? kept : prize.stock;
+  for (const storeId of Object.keys(STORES)) {
+    stock[storeId] = { ...(prev?.[storeId] || {}) };
+    for (const prize of prizes[storeId]) {
+      const kept = stock[storeId][prize.id];
+      stock[storeId][prize.id] = Number.isFinite(kept) ? kept : prize.stock;
     }
   }
   return stock;
+}
+
+function prizesFor(storeId) {
+  return state.prizes[storeId] || [];
+}
+
+function findPrize(storeId, prizeId) {
+  return prizesFor(storeId).find((p) => p.id === prizeId);
+}
+
+function renumberPrizes(storeId) {
+  prizesFor(storeId).forEach((p, i) => { p.no = i + 1; });
+}
+
+function escAttr(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;");
 }
 
 function persist() {
@@ -69,17 +142,15 @@ function persist() {
     pin: state.pin,
     lock: state.lock,
     choice: state.choice,
+    prizes: state.prizes,
     stock: state.stock,
-    history: state.history,
-    spinLog: state.spinLog
+    history: state.history
   }));
 }
 
-const SPIN_LOG_MAX = 8000;
-
-function appendSpinLog(storeId, prize) {
+function buildSpinEntry(storeId, prize) {
   const now = new Date();
-  state.spinLog.push({
+  return {
     at: now.toISOString(),
     date: now.toLocaleDateString("id-ID"),
     time: now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
@@ -89,44 +160,86 @@ function appendSpinLog(storeId, prize) {
     prize: prize.name,
     stockLeft: qty(storeId, prize.id),
     storeStockLeft: sumStock(storeId)
-  });
-  if (state.spinLog.length > SPIN_LOG_MAX) {
-    state.spinLog = state.spinLog.slice(-SPIN_LOG_MAX);
+  };
+}
+
+async function pushSpinArchive(storeId, prize) {
+  try {
+    const res = await fetch(ARCHIVE_API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildSpinEntry(storeId, prize))
+    });
+    if (!res.ok) console.warn("Arsip server:", await res.text());
+  } catch (err) {
+    console.warn("Arsip server tidak terjangkau", err);
   }
 }
 
-function csvCell(value) {
-  const text = String(value ?? "");
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-}
-
-function downloadSpinLog(filterStoreId) {
-  const rows = filterStoreId
-    ? state.spinLog.filter((row) => row.storeId === filterStoreId)
-    : state.spinLog.slice();
-  if (!rows.length) {
-    window.alert("Belum ada data spin untuk diunduh.");
+async function refreshArchiveStats() {
+  const el = document.getElementById("spinLogStats");
+  if (!el) return;
+  if (sessionStorage.getItem("cstore-staff") !== "1") {
+    el.textContent = "Masuk panel staf untuk melihat arsip server.";
     return;
   }
-  const header = ["No", "Tanggal", "Waktu", "Toko", "Hadiah", "Sisa hadiah", "Sisa total toko"];
-  const body = rows.map((row, index) => [
-    index + 1,
-    row.date,
-    row.time,
-    row.store,
-    row.prize,
-    row.stockLeft,
-    row.storeStockLeft
-  ].map(csvCell).join(","));
-  const csv = "\uFEFF" + [header.join(","), ...body].join("\r\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const stamp = new Date().toISOString().slice(0, 10);
-  const slug = filterStoreId ? STORES[filterStoreId].name.replace(/\s+/g, "-").toLowerCase() : "semua-toko";
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(blob);
-  link.download = `cstore-spin-${slug}-${stamp}.csv`;
-  link.click();
-  URL.revokeObjectURL(link.href);
+  el.textContent = "Memuat arsip server…";
+  try {
+    const res = await fetch(`${ARCHIVE_API}?stats=1&key=${encodeURIComponent(state.pin)}`);
+    if (!res.ok) throw new Error(String(res.status));
+    const data = await res.json();
+    const storeRows = data.byStore[adminStore] || 0;
+    el.textContent = `${data.total} catatan di server · ${storeRows} untuk ${STORES[adminStore].name}`;
+  } catch {
+    el.textContent = "Arsip server belum aktif — host di Vercel + hubungkan KV (lihat README).";
+  }
+}
+
+async function downloadArchiveCsv(filterStoreId) {
+  if (sessionStorage.getItem("cstore-staff") !== "1") {
+    window.alert("Masuk panel staf dulu.");
+    return;
+  }
+  const params = new URLSearchParams({ key: state.pin, format: "csv" });
+  if (filterStoreId) params.set("store", filterStoreId);
+  try {
+    const res = await fetch(`${ARCHIVE_API}?${params}`);
+    if (res.status === 401) {
+      window.alert("Kode ditolak server. Samakan SPIN_ADMIN_KEY di Vercel dengan kode staf panel.");
+      return;
+    }
+    if (!res.ok) throw new Error(String(res.status));
+    const blob = await res.blob();
+    const dispo = res.headers.get("Content-Disposition") || "";
+    const match = /filename=\"(.+)\"/.exec(dispo);
+    const name = match ? match[1] : `cstore-spin-${filterStoreId || "semua-toko"}.csv`;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = name;
+    link.click();
+    URL.revokeObjectURL(link.href);
+  } catch {
+    window.alert("Gagal unduh dari server. Pastikan situs di-deploy di Vercel dengan KV terhubung.");
+  }
+}
+
+async function clearArchiveRemote() {
+  if (sessionStorage.getItem("cstore-staff") !== "1") {
+    window.alert("Masuk panel staf dulu.");
+    return;
+  }
+  if (!window.confirm("Hapus SEMUA arsip spin di server? File CSV yang sudah diunduh tidak terpengaruh.")) return;
+  try {
+    const res = await fetch(`${ARCHIVE_API}?key=${encodeURIComponent(state.pin)}`, { method: "DELETE" });
+    if (res.status === 401) {
+      window.alert("Kode ditolak server. Periksa SPIN_ADMIN_KEY di Vercel.");
+      return;
+    }
+    if (!res.ok) throw new Error(String(res.status));
+    refreshArchiveStats();
+  } catch {
+    window.alert("Gagal menghapus arsip server.");
+  }
 }
 
 function activeStoreId() {
@@ -138,11 +251,11 @@ function qty(storeId, prizeId) {
 }
 
 function slicesFor(storeId) {
-  return STORES[storeId].prizes.filter((p) => qty(storeId, p.id) > 0);
+  return prizesFor(storeId).filter((p) => qty(storeId, p.id) > 0);
 }
 
 function sumStock(storeId) {
-  return STORES[storeId].prizes.reduce((n, p) => n + qty(storeId, p.id), 0);
+  return prizesFor(storeId).reduce((n, p) => n + qty(storeId, p.id), 0);
 }
 
 function render() {
@@ -187,14 +300,13 @@ function renderPicker() {
 }
 
 function renderFloor(storeId) {
-  const store = STORES[storeId];
   board = slicesFor(storeId);
   colorOf = {};
   board.forEach((p, i) => { colorOf[p.id] = PALETTE[i % PALETTE.length]; });
   if (board.length > 1 && board.length % PALETTE.length === 1) {
     colorOf[board[board.length - 1].id] = PALETTE[2];
   }
-  document.getElementById("storeTitle").textContent = store.name;
+  document.getElementById("storeTitle").textContent = STORES[storeId].name;
   document.getElementById("statLeft").textContent = sumStock(storeId);
   document.getElementById("statKinds").textContent = board.length;
   switchStoreBtn.hidden = !!state.lock;
@@ -206,7 +318,7 @@ function renderFloor(storeId) {
     const arc = TAU / board.length;
     rotation = (TAU - 0.5 * arc) % TAU;
   }
-  document.getElementById("prizeList").innerHTML = store.prizes.map((p) => {
+  document.getElementById("prizeList").innerHTML = prizesFor(storeId).map((p) => {
     const left = qty(storeId, p.id);
     const swatch = left ? colorOf[p.id][0] : "#2F3850";
     const cls = [left ? "" : "gone", lastHit === p.id ? "hit" : ""].join(" ").trim();
@@ -233,14 +345,15 @@ function renderAdmin() {
     `<button type="button" role="tab" data-tab="${id}" aria-selected="${adminStore === id ? "true" : "false"}">${store.name}</button>`
   ).join("");
 
-  const store = STORES[adminStore];
-  document.getElementById("tableCaption").textContent = `Stok ${store.name}`;
-  document.getElementById("stockBody").innerHTML = store.prizes.map((p) => `
-    <tr>
+  const storeName = STORES[adminStore].name;
+  document.getElementById("tableCaption").textContent = `Hadiah ${storeName}`;
+  document.getElementById("stockBody").innerHTML = prizesFor(adminStore).map((p) => `
+    <tr data-prize-row="${p.id}">
       <td>${p.no}</td>
-      <td>${p.name}</td>
-      <td>${p.stock}</td>
-      <td><input type="number" min="0" step="1" inputmode="numeric" aria-label="Sisa ${p.name}" data-qty="${p.id}" value="${qty(adminStore, p.id)}"></td>
+      <td><input type="text" class="prize-name" data-prize-name="${p.id}" value="${escAttr(p.name)}" aria-label="Nama hadiah ${p.no}"></td>
+      <td><input type="number" min="0" step="1" inputmode="numeric" data-prize-init="${p.id}" value="${p.stock}" aria-label="Stok awal ${escAttr(p.name)}"></td>
+      <td><input type="number" min="0" step="1" inputmode="numeric" data-qty="${p.id}" value="${qty(adminStore, p.id)}" aria-label="Sisa ${escAttr(p.name)}"></td>
+      <td><button type="button" class="ghost prize-remove" data-remove-prize="${p.id}">Hapus</button></td>
     </tr>`).join("");
 
   const log = state.history[adminStore] || [];
@@ -248,9 +361,7 @@ function renderAdmin() {
     ? log.map((h) => `<li><span>${h.name}</span><span>${h.when}</span></li>`).join("")
     : "<li>Belum ada.</li>";
 
-  const storeRows = state.spinLog.filter((row) => row.storeId === adminStore).length;
-  document.getElementById("spinLogStats").textContent =
-    `${state.spinLog.length} catatan arsip · ${storeRows} untuk ${store.name}`;
+  refreshArchiveStats();
 }
 
 function draw(rot) {
@@ -516,7 +627,7 @@ function finish(storeId, idx, token) {
   const [band] = colorOf[prize.id] || PALETTE[0];
   lastHit = prize.id;
   state.stock[storeId][prize.id] = Math.max(0, qty(storeId, prize.id) - 1);
-  appendSpinLog(storeId, prize);
+  pushSpinArchive(storeId, prize);
   const when = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
   state.history[storeId] = [{ name: prize.name, when }, ...(state.history[storeId] || [])].slice(0, 30);
   persist();
@@ -642,20 +753,78 @@ document.getElementById("tabs").addEventListener("click", (e) => {
 });
 
 document.getElementById("stockBody").addEventListener("change", (e) => {
-  const input = e.target.closest("[data-qty]");
-  if (!input || spinning) return;
-  const next = Math.max(0, parseInt(input.value, 10) || 0);
-  input.value = String(next);
-  state.stock[adminStore][input.dataset.qty] = next;
+  const target = e.target;
+  if (spinning) return;
+
+  const qtyInput = target.closest("[data-qty]");
+  if (qtyInput) {
+    const next = Math.max(0, parseInt(qtyInput.value, 10) || 0);
+    qtyInput.value = String(next);
+    state.stock[adminStore][qtyInput.dataset.qty] = next;
+    persist();
+    return;
+  }
+
+  const initInput = target.closest("[data-prize-init]");
+  if (initInput) {
+    const prize = findPrize(adminStore, initInput.dataset.prizeInit);
+    if (!prize) return;
+    const next = Math.max(0, parseInt(initInput.value, 10) || 0);
+    initInput.value = String(next);
+    prize.stock = next;
+    persist();
+    return;
+  }
+
+  const nameInput = target.closest("[data-prize-name]");
+  if (nameInput) {
+    const prize = findPrize(adminStore, nameInput.dataset.prizeName);
+    if (!prize) return;
+    const next = nameInput.value.trim() || "Hadiah";
+    nameInput.value = next;
+    prize.name = next;
+    prize.short = shortFromName(next);
+    persist();
+    const storeId = activeStoreId();
+    if (storeId === adminStore) renderFloor(storeId);
+  }
+});
+
+document.getElementById("stockBody").addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-remove-prize]");
+  if (!btn || spinning) return;
+  const prizeId = btn.dataset.removePrize;
+  const prize = findPrize(adminStore, prizeId);
+  if (!prize) return;
+  const label = prize.name;
+  if (!window.confirm(`Hapus "${label}" dari daftar ${STORES[adminStore].name}? Sisa stok hadiah ini ikut dihapus.`)) return;
+  state.prizes[adminStore] = prizesFor(adminStore).filter((p) => p.id !== prizeId);
+  delete state.stock[adminStore][prizeId];
+  renumberPrizes(adminStore);
   persist();
+  renderAdmin();
+  const storeId = activeStoreId();
+  if (storeId === adminStore) renderFloor(storeId);
+});
+
+document.getElementById("addPrize").addEventListener("click", () => {
+  const id = `item-${Date.now().toString(36)}`;
+  const name = "Hadiah baru";
+  const list = state.prizes[adminStore];
+  list.push({ id, name, short: shortFromName(name), stock: 1, no: list.length + 1 });
+  state.stock[adminStore][id] = 1;
+  persist();
+  renderAdmin();
 });
 
 document.getElementById("resetStore").addEventListener("click", () => {
-  const store = STORES[adminStore];
-  if (!window.confirm(`Kembalikan stok ${store.name} ke angka awal?`)) return;
-  for (const prize of store.prizes) state.stock[adminStore][prize.id] = prize.stock;
+  const storeName = STORES[adminStore].name;
+  if (!window.confirm(`Kembalikan sisa stok ${storeName} ke kolom Stok awal? Daftar hadiah tidak berubah.`)) return;
+  for (const prize of prizesFor(adminStore)) state.stock[adminStore][prize.id] = prize.stock;
   persist();
   renderAdmin();
+  const storeId = activeStoreId();
+  if (storeId === adminStore) renderFloor(storeId);
 });
 
 document.getElementById("clearHistory").addEventListener("click", () => {
@@ -665,19 +834,15 @@ document.getElementById("clearHistory").addEventListener("click", () => {
 });
 
 document.getElementById("downloadLogAll").addEventListener("click", () => {
-  downloadSpinLog(null);
+  downloadArchiveCsv(null);
 });
 
 document.getElementById("downloadLogStore").addEventListener("click", () => {
-  downloadSpinLog(adminStore);
+  downloadArchiveCsv(adminStore);
 });
 
 document.getElementById("clearSpinLog").addEventListener("click", () => {
-  if (!state.spinLog.length) return;
-  if (!window.confirm("Hapus semua arsip spin di browser ini? File yang sudah diunduh tidak terpengaruh.")) return;
-  state.spinLog = [];
-  persist();
-  renderAdmin();
+  clearArchiveRemote();
 });
 
 document.getElementById("pinForm").addEventListener("submit", (e) => {

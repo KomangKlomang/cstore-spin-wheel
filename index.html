@@ -77,7 +77,7 @@
       </div>
       <button id="logout" type="button" class="ghost">Keluar</button>
     </div>
-    <p class="lede">Perubahan tersimpan di browser ini. Peluang menang mengikuti sisa stok.</p>
+    <p class="lede">Nama hadiah, daftar item, dan sisa stok tersimpan di browser tablet ini. Peluang menang mengikuti sisa stok.</p>
 
     <div class="card">
       <p class="label">Toko di layar utama</p>
@@ -92,15 +92,19 @@
           <thead>
             <tr>
               <th scope="col">No</th>
-              <th scope="col">Hadiah</th>
-              <th scope="col">Awal</th>
+              <th scope="col">Nama hadiah</th>
+              <th scope="col">Stok awal</th>
               <th scope="col">Sisa</th>
+              <th scope="col">Aksi</th>
             </tr>
           </thead>
           <tbody id="stockBody"></tbody>
         </table>
       </div>
-      <button id="resetStore" type="button" class="ghost">Kembalikan stok awal toko ini</button>
+      <div class="stock-toolbar">
+        <button id="addPrize" type="button" class="solid">Tambah hadiah</button>
+        <button id="resetStore" type="button" class="ghost">Kembalikan sisa ke stok awal</button>
+      </div>
     </div>
 
     <div class="admin-grid">
@@ -120,13 +124,13 @@
 
     <div class="card log-export">
       <p class="label">Arsip spin · spreadsheet</p>
-      <p class="lede">Setiap putar tercatat otomatis. Reset stok atau hapus riwayat tampilan tidak menghapus arsip ini.</p>
-      <p id="spinLogStats" class="note">0 catatan arsip</p>
+      <p class="lede">Setiap putar tersimpan di server Vercel (satu arsip untuk semua tablet). Reset stok di browser tidak menghapus arsip ini.</p>
+      <p id="spinLogStats" class="note">Memuat arsip server…</p>
       <div class="export-actions">
         <button id="downloadLogAll" type="button" class="solid">Unduh CSV (semua toko)</button>
         <button id="downloadLogStore" type="button" class="ghost">Unduh toko ini saja</button>
       </div>
-      <button id="clearSpinLog" type="button" class="ghost">Hapus arsip di browser</button>
+      <button id="clearSpinLog" type="button" class="ghost">Hapus arsip di server</button>
     </div>
   </div>
 </section>
