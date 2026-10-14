@@ -11,11 +11,14 @@ Peluang menang mengikuti sisa stok. Hadiah yang habis hilang dari roda.
 
 GitHub Pages **tidak** menjalankan API arsip. Host project ini di Vercel.
 
-1. Buka [vercel.com](https://vercel.com) → **Add New Project** → import repo `cstore-spin-wheel`.
-2. **Storage** → **Create Database** → **KV** → Connect ke project yang sama (variabel `KV_*` terisi otomatis).
-3. **Settings → Environment Variables** → tambah:
-   - `SPIN_ADMIN_KEY` = `cstore` (samakan dengan kode staf panel; ganti jika Anda ubah kode di panel **dan** di Vercel).
-4. Deploy. URL production (mis. `https://cstore-spin-wheel.vercel.app`) dipakai untuk semua tablet.
+Production: **https://cstore-spin-wheel.vercel.app** (bukan GitHub Pages).
+
+Jika setup ulang:
+
+1. Import repo `KomangKlomang/cstore-spin-wheel` di [vercel.com](https://vercel.com).
+2. **Storage → Marketplace → Upstash Redis** (gratis) → **Connect** ke project ini (`KV_*` env otomatis).
+3. Env `SPIN_ADMIN_KEY` = `cstore` (sama dengan kode staf panel).
+4. Redeploy setelah Redis terhubung.
 
 ### Arsip spin
 
