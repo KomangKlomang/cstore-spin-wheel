@@ -2,7 +2,7 @@ import { list, put } from "@vercel/blob";
 
 const ARCHIVE_PATH = "spin-archive/entries.jsonl";
 const MAX_ROWS = 8000;
-const STORES = new Set(["paskal", "taruma", "duyut"]);
+const STORES = new Set(["paskal", "taruma", "duyut", "kebonraya"]);
 
 function adminKeyOk(key) {
   const expected = process.env.SPIN_ADMIN_KEY || "cstore";
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
       const all = await readArchive();
 
       if (req.query.stats === "1") {
-        const byStore = { paskal: 0, taruma: 0, duyut: 0 };
+        const byStore = { paskal: 0, taruma: 0, duyut: 0, kebonraya: 0 };
         for (const row of all) {
           if (byStore[row.storeId] !== undefined) byStore[row.storeId] += 1;
         }

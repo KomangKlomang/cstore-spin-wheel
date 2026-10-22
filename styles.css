@@ -443,6 +443,22 @@ td input[type="number"] { width: 96px; }
 td input.prize-name { width: 100%; min-width: 160px; }
 td .prize-remove { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
 .stock-toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.po-import-card { display: grid; gap: 10px; }
+.po-import-card select,
+.po-import-card textarea {
+  width: 100%;
+  min-height: 44px;
+  font: inherit;
+  border-radius: 12px;
+  border: 1px solid var(--edge);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cream);
+  padding: 10px 12px;
+}
+.po-import-card textarea { min-height: 120px; resize: vertical; }
+.po-preview { margin-top: 4px; }
+.po-preview table { font-size: 14px; }
+.po-preview .note { margin: 10px 0 0; }
 .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .log-export .note { margin: 0 0 14px; color: var(--cream); font-weight: 600; }
 .export-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }

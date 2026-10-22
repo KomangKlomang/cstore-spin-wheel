@@ -15,7 +15,7 @@ const state = {
   choice: saved.choice || null,
   prizes: bootPrizes,
   stock: mergeStock(saved.stock, bootPrizes),
-  history: saved.history || { paskal: [], taruma: [], duyut: [] }
+  history: { paskal: [], taruma: [], duyut: [], kebonraya: [], ...saved.history }
 };
 
 const ARCHIVE_API = "/api/spins";
@@ -33,7 +33,8 @@ const PALETTE = [
 const STORE_ACCENT = {
   paskal: ["#FF5A2C", true],
   taruma: ["#FFC93C", false],
-  duyut: ["#14B8B0", false]
+  duyut: ["#14B8B0", false],
+  kebonraya: ["#8B5CF6", false]
 };
 const confetti = document.getElementById("confetti");
 const cctx = confetti.getContext("2d");
@@ -48,6 +49,7 @@ let lastHit = null;
 let board = [];
 let audioCtx;
 let adminStore = "paskal";
+let poPreviewItems = [];
 const switchStoreBtn = document.getElementById("switchStore");
 
 function load() {
@@ -281,7 +283,10 @@ function render() {
   const authed = sessionStorage.getItem("cstore-staff") === "1";
   document.getElementById("login").hidden = authed;
   document.getElementById("panel").hidden = !authed;
-  if (authed) renderAdmin();
+  if (authed) {
+    initPoImportUi();
+    renderAdmin();
+  }
 }
 
 function renderPicker() {
@@ -362,6 +367,45 @@ function renderAdmin() {
     : "<li>Belum ada.</li>";
 
   refreshArchiveStats();
+}
+
+function initPoImportUi() {
+  const sel = document.getElementById("poPreset");
+  if (!sel || sel.dataset.ready) return;
+  sel.dataset.ready = "1";
+  sel.innerHTML = `<option value="">— Pilih preset —</option>${PO_PRESETS.map(
+    (p) => `<option value="${escAttr(p.id)}">${escAttr(p.label)}</option>`
+  ).join("")}`;
+  sel.addEventListener("change", () => {
+    const preset = PO_PRESETS.find((p) => p.id === sel.value);
+    if (preset) document.getElementById("poPaste").value = preset.text;
+  });
+}
+
+function renderPoPreview(items) {
+  const box = document.getElementById("poPreviewBox");
+  if (!items.length) {
+    if (box) box.hidden = true;
+    window.alert("Tidak ada baris FG GO SPIN WHEEL yang terbaca. Tempel teks dari PDF atau pilih preset.");
+    return;
+  }
+  poPreviewItems = items;
+  document.getElementById("poPreviewBody").innerHTML = items.map(
+    (row) => `<tr><td>${escAttr(row.sku)}</td><td>${escAttr(row.name)}</td><td>${row.qty}</td></tr>`
+  ).join("");
+  document.getElementById("poPreviewNote").textContent =
+    `${items.length} item · akan mengganti daftar hadiah & sisa stok untuk ${STORES[adminStore].name}.`;
+  box.hidden = false;
+}
+
+function applyPoToStore(storeId, items) {
+  const mapped = poItemsToPrizes(items).map(({ sku, ...prize }) => prize);
+  state.prizes[storeId] = mapped;
+  state.stock[storeId] = {};
+  for (const prize of mapped) {
+    state.stock[storeId][prize.id] = prize.stock;
+  }
+  renumberPrizes(storeId);
 }
 
 function draw(rot) {
@@ -843,6 +887,27 @@ document.getElementById("downloadLogStore").addEventListener("click", () => {
 
 document.getElementById("clearSpinLog").addEventListener("click", () => {
   clearArchiveRemote();
+});
+
+document.getElementById("poPreview").addEventListener("click", () => {
+  const text = document.getElementById("poPaste").value;
+  renderPoPreview(parsePurchaseOrderText(text));
+});
+
+document.getElementById("poApply").addEventListener("click", () => {
+  if (!poPreviewItems.length) {
+    window.alert("Pratinjau dulu.");
+    return;
+  }
+  const storeName = STORES[adminStore].name;
+  if (!window.confirm(`Ganti semua hadiah ${storeName} dengan ${poPreviewItems.length} baris PO ini?`)) return;
+  applyPoToStore(adminStore, poPreviewItems);
+  persist();
+  poPreviewItems = [];
+  document.getElementById("poPreviewBox").hidden = true;
+  renderAdmin();
+  const storeId = activeStoreId();
+  if (storeId === adminStore) renderFloor(storeId);
 });
 
 document.getElementById("pinForm").addEventListener("submit", (e) => {

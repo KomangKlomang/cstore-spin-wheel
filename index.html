@@ -122,6 +122,24 @@
       </form>
     </div>
 
+    <div class="card po-import-card">
+      <p class="label">Import Purchase Order</p>
+      <p class="lede">Hanya mengubah toko yang sedang dipilih di tab di atas. Paskal / Taruma / Duyut tidak ikut berubah kecuali Anda pilih tab itu dan klik terapkan.</p>
+      <label for="poPreset">Preset PO</label>
+      <select id="poPreset"></select>
+      <label for="poPaste">Atau tempel baris dari PDF</label>
+      <textarea id="poPaste" rows="6" placeholder="FG2133 FG GO SPIN WHEEL KAOS 5 Pcs …"></textarea>
+      <button id="poPreview" type="button" class="ghost">Pratinjau</button>
+      <div id="poPreviewBox" class="po-preview" hidden>
+        <table>
+          <thead><tr><th>SKU</th><th>Nama hadiah</th><th>Qty</th></tr></thead>
+          <tbody id="poPreviewBody"></tbody>
+        </table>
+        <p id="poPreviewNote" class="note"></p>
+        <button id="poApply" type="button" class="solid">Terapkan ke toko ini</button>
+      </div>
+    </div>
+
     <div class="card log-export">
       <p class="label">Arsip spin · spreadsheet</p>
       <p class="lede">Setiap putar tersimpan di server Vercel Blob (satu arsip untuk semua tablet). Reset stok di browser tidak menghapus arsip ini.</p>
@@ -152,6 +170,7 @@
 </dialog>
 
 <script src="prizes.js"></script>
+<script src="po-import.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
