@@ -22,6 +22,8 @@ const ARCHIVE_API = "/api/spins";
 const STATE_API = "/api/state";
 let serverStateLoaded = false;
 let pushStateTimer = 0;
+let lastServerUpdatedAt = null;
+let localStateDirty = false;
 
 const PALETTE = [
   ["#FF5A2C", "#FFF8F4"],
@@ -151,7 +153,10 @@ function persist(options = {}) {
     stock: state.stock,
     history: state.history
   }));
-  if (!options.skipPush) schedulePushStateToServer();
+  if (!options.skipPush) {
+    localStateDirty = true;
+    schedulePushStateToServer();
+  }
 }
 
 function applyServerState(remote) {
@@ -186,19 +191,35 @@ function applyServerState(remote) {
   return true;
 }
 
-async function pullStateFromServer() {
+async function pullStateFromServer(options = {}) {
+  const force = !!options.force;
   try {
     const res = await fetch(STATE_API, { cache: "no-store" });
-    if (!res.ok) return;
+    if (!res.ok) return false;
     const remote = await res.json();
-    if (applyServerState(remote)) {
+    const remoteAt = remote?.updatedAt || null;
+    if (!force && localStateDirty) return false;
+    if (
+      !force
+      && remoteAt
+      && lastServerUpdatedAt
+      && remoteAt === lastServerUpdatedAt
+    ) {
+      return false;
+    }
+    const applied = applyServerState(remote);
+    if (remoteAt) lastServerUpdatedAt = remoteAt;
+    if (applied) {
       serverStateLoaded = true;
       persist({ skipPush: true });
-    } else if (remote?.updatedAt) {
-      updateSyncBanner("Server kosong — login Staf lalu ubah stok sekali untuk unggah.", true);
+      return true;
     }
+    if (remoteAt && sessionStorage.getItem("cstore-staff") === "1") {
+      updateSyncBanner("Server kosong — ubah stok sekali untuk mulai.", true);
+    }
+    return false;
   } catch {
-    /* offline / GitHub Pages tanpa API */
+    return false;
   }
 }
 
@@ -221,7 +242,10 @@ async function pushStateToServer(silent) {
       if (!silent) updateSyncBanner(`Gagal simpan ke server. Cek PIN = SPIN_ADMIN_KEY di Vercel. (${res.status})`, true);
       return false;
     }
-    updateSyncBanner(`Tersinkron server · ${new Date().toLocaleTimeString("id-ID")}`, false);
+    const saved = await res.json();
+    if (saved?.updatedAt) lastServerUpdatedAt = saved.updatedAt;
+    localStateDirty = false;
+    if (!silent) updateSyncBanner(`Tersimpan · ${new Date().toLocaleTimeString("id-ID")}`, false);
     return true;
   } catch (err) {
     console.warn("Sync stok server gagal", err);
@@ -240,18 +264,21 @@ function updateSyncBanner(message, isError) {
 
 let liveSyncTimer = 0;
 
+const LIVE_SYNC_MS = 5000;
+
 function startLiveSync() {
   if (liveSyncTimer) return;
   liveSyncTimer = setInterval(async () => {
     if (document.hidden) return;
-    const storeId = activeStoreId();
-    const stockBefore = storeId ? JSON.stringify(state.stock[storeId]) : "";
-    await pullStateFromServer();
-    if (storeId && JSON.stringify(state.stock[storeId]) !== stockBefore) {
-      persist({ skipPush: true });
+    const snapshot = JSON.stringify({ stock: state.stock, prizes: state.prizes });
+    const changed = await pullStateFromServer();
+    if (changed || JSON.stringify({ stock: state.stock, prizes: state.prizes }) !== snapshot) {
       render();
+      if (location.hash === "#admin" && sessionStorage.getItem("cstore-staff") === "1") {
+        updateSyncBanner(`Data terbaru dari server · ${new Date().toLocaleTimeString("id-ID")}`, false);
+      }
     }
-  }, 10000);
+  }, LIVE_SYNC_MS);
 }
 
 function buildSpinEntry(storeId, prize) {
@@ -877,8 +904,9 @@ document.getElementById("login").addEventListener("submit", async (e) => {
   if (!ok) return;
   sessionStorage.setItem("cstore-staff", "1");
   document.getElementById("pin").value = "";
-  await pullStateFromServer();
+  await pullStateFromServer({ force: true });
   await pushStateToServer(false);
+  updateSyncBanner("Login OK — ubah stok di sini, otomatis ke server & ke roda toko.", false);
   render();
 });
 
@@ -1004,9 +1032,10 @@ document.getElementById("poPreview").addEventListener("click", () => {
 });
 
 document.getElementById("syncPull").addEventListener("click", async () => {
-  await pullStateFromServer();
+  localStateDirty = false;
+  await pullStateFromServer({ force: true });
   render();
-  updateSyncBanner(`Dimuat dari server · ${new Date().toLocaleTimeString("id-ID")}`, false);
+  updateSyncBanner(`Dimuat ulang · ${new Date().toLocaleTimeString("id-ID")}`, false);
 });
 
 document.getElementById("poApply").addEventListener("click", () => {
