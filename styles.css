@@ -459,6 +459,16 @@ td .prize-remove { padding: 6px 12px; font-size: 13px; white-space: nowrap; }
 .po-preview { margin-top: 4px; }
 .po-preview table { font-size: 14px; }
 .po-preview .note { margin: 10px 0 0; }
+.sync-banner {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  background: rgba(20, 184, 176, 0.15);
+  color: var(--cream);
+}
+.sync-banner.error { background: rgba(224, 69, 24, 0.2); color: #ffb89a; }
 .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .log-export .note { margin: 0 0 14px; color: var(--cream); font-weight: 600; }
 .export-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }

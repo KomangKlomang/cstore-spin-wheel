@@ -1,5 +1,5 @@
-import { list, put } from "@vercel/blob";
-import { mergeStoreStock } from "./state.js";
+import { readTextBlob, writeTextBlob } from "../lib/blob-json.js";
+import { mergeStoreStock, parseRequestJson } from "../lib/game-state-store.js";
 
 const ARCHIVE_PATH = "spin-archive/entries.jsonl";
 const MAX_ROWS = 8000;
@@ -47,31 +47,14 @@ function parseArchiveText(text) {
 }
 
 async function readArchive() {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) throw new Error("blob_not_configured");
-
-  const found = await list({ prefix: "spin-archive/", limit: 10, token });
-  const blob = found.blobs.find((b) => b.pathname === ARCHIVE_PATH) || found.blobs[0];
-  if (!blob?.url) return [];
-
-  const res = await fetch(blob.url);
-  if (!res.ok) throw new Error("blob_read_failed");
-  return parseArchiveText(await res.text());
+  const text = await readTextBlob(ARCHIVE_PATH, "");
+  return parseArchiveText(text);
 }
 
 async function writeArchive(rows) {
-  const token = process.env.BLOB_READ_WRITE_TOKEN;
-  if (!token) throw new Error("blob_not_configured");
-
   const trimmed = rows.slice(-MAX_ROWS);
   const body = trimmed.map((row) => JSON.stringify(row)).join("\n");
-  await put(ARCHIVE_PATH, body, {
-    access: "private",
-    token,
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    contentType: "text/plain; charset=utf-8"
-  });
+  await writeTextBlob(ARCHIVE_PATH, body);
   return trimmed;
 }
 
@@ -85,7 +68,7 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "POST") {
-      const body = req.body;
+      const body = parseRequestJson(req);
       if (!validateEntry(body)) {
         return res.status(400).json({ error: "invalid payload" });
       }
@@ -94,7 +77,11 @@ export default async function handler(req, res) {
       rows.push(entry);
       await writeArchive(rows);
       if (stockSnapshot && typeof stockSnapshot === "object") {
-        await mergeStoreStock(entry.storeId, stockSnapshot);
+        try {
+          await mergeStoreStock(entry.storeId, stockSnapshot);
+        } catch (mergeErr) {
+          console.error("merge stock after spin", mergeErr);
+        }
       }
       return res.status(201).json({ ok: true });
     }
@@ -149,7 +136,8 @@ export default async function handler(req, res) {
     const msg = String(err.message || err);
     const missingBlob = /blob_not_configured|BLOB_READ_WRITE_TOKEN/i.test(msg);
     return res.status(500).json({
-      error: missingBlob ? "storage_not_configured" : "server_error"
+      error: missingBlob ? "storage_not_configured" : "server_error",
+      detail: msg.slice(0, 200)
     });
   }
 }

@@ -142,7 +142,7 @@ function escAttr(value) {
     .replace(/</g, "&lt;");
 }
 
-function persist() {
+function persist(options = {}) {
   localStorage.setItem(KEY, JSON.stringify({
     pin: state.pin,
     lock: state.lock,
@@ -151,7 +151,7 @@ function persist() {
     stock: state.stock,
     history: state.history
   }));
-  schedulePushStateToServer();
+  if (!options.skipPush) schedulePushStateToServer();
 }
 
 function applyServerState(remote) {
@@ -180,7 +180,7 @@ function applyServerState(remote) {
   if (hasStock) {
     for (const storeId of Object.keys(STORES)) {
       if (!remote.stock[storeId]) continue;
-      state.stock[storeId] = { ...state.stock[storeId], ...remote.stock[storeId] };
+      state.stock[storeId] = { ...remote.stock[storeId] };
     }
   }
   return true;
@@ -193,14 +193,9 @@ async function pullStateFromServer() {
     const remote = await res.json();
     if (applyServerState(remote)) {
       serverStateLoaded = true;
-      localStorage.setItem(KEY, JSON.stringify({
-        pin: state.pin,
-        lock: state.lock,
-        choice: state.choice,
-        prizes: state.prizes,
-        stock: state.stock,
-        history: state.history
-      }));
+      persist({ skipPush: true });
+    } else if (remote?.updatedAt) {
+      updateSyncBanner("Server kosong — login Staf lalu ubah stok sekali untuk unggah.", true);
     }
   } catch {
     /* offline / GitHub Pages tanpa API */
@@ -212,18 +207,51 @@ function schedulePushStateToServer() {
   pushStateTimer = setTimeout(() => { pushStateTimer = 0; pushStateToServer(); }, 500);
 }
 
-async function pushStateToServer() {
-  if (sessionStorage.getItem("cstore-staff") !== "1") return;
+async function pushStateToServer(silent) {
+  if (sessionStorage.getItem("cstore-staff") !== "1") return false;
   try {
     const res = await fetch(`${STATE_API}?key=${encodeURIComponent(state.pin)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prizes: state.prizes, stock: state.stock })
     });
-    if (!res.ok) console.warn("Sync stok server:", await res.text());
+    if (!res.ok) {
+      const msg = await res.text();
+      console.warn("Sync stok server:", msg);
+      if (!silent) updateSyncBanner(`Gagal simpan ke server. Cek PIN = SPIN_ADMIN_KEY di Vercel. (${res.status})`, true);
+      return false;
+    }
+    updateSyncBanner(`Tersinkron server · ${new Date().toLocaleTimeString("id-ID")}`, false);
+    return true;
   } catch (err) {
     console.warn("Sync stok server gagal", err);
+    if (!silent) updateSyncBanner("Server tidak terjangkau. Pakai cstore-spin-wheel.vercel.app", true);
+    return false;
   }
+}
+
+function updateSyncBanner(message, isError) {
+  const el = document.getElementById("syncBanner");
+  if (!el) return;
+  el.textContent = message;
+  el.hidden = false;
+  el.classList.toggle("error", !!isError);
+}
+
+let liveSyncTimer = 0;
+
+function startLiveSync() {
+  if (liveSyncTimer) return;
+  liveSyncTimer = setInterval(async () => {
+    if (document.hidden) return;
+    const storeId = activeStoreId();
+    const stockBefore = storeId ? JSON.stringify(state.stock[storeId]) : "";
+    await pullStateFromServer();
+    if (storeId && JSON.stringify(state.stock[storeId]) !== stockBefore) {
+      persist({ skipPush: true });
+      render();
+    }
+  }, 10000);
 }
 
 function buildSpinEntry(storeId, prize) {
@@ -850,7 +878,7 @@ document.getElementById("login").addEventListener("submit", async (e) => {
   sessionStorage.setItem("cstore-staff", "1");
   document.getElementById("pin").value = "";
   await pullStateFromServer();
-  await pushStateToServer();
+  await pushStateToServer(false);
   render();
 });
 
@@ -975,6 +1003,12 @@ document.getElementById("poPreview").addEventListener("click", () => {
   renderPoPreview(parsePurchaseOrderText(text));
 });
 
+document.getElementById("syncPull").addEventListener("click", async () => {
+  await pullStateFromServer();
+  render();
+  updateSyncBanner(`Dimuat dari server · ${new Date().toLocaleTimeString("id-ID")}`, false);
+});
+
 document.getElementById("poApply").addEventListener("click", () => {
   if (!poPreviewItems.length) {
     window.alert("Pratinjau dulu.");
@@ -1018,5 +1052,6 @@ window.addEventListener("hashchange", () => {
   await pullStateFromServer();
   applyHash();
   render();
+  startLiveSync();
   document.fonts.ready.then(loop);
 })();
