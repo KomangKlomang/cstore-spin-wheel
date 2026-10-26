@@ -2,8 +2,8 @@
 
 Roda undian untuk tiga toko: **Paskal**, **Taruma**, dan **Duyut**.
 
-- **Stok & daftar hadiah** — per browser/tablet (localStorage): ubah nama, tambah/hapus item, atur sisa stok di panel staf.
-- **Arsip setiap spin** — disimpan di **Vercel Blob** (server), gabungan semua perangkat.
+- **Stok & daftar hadiah** — disinkron ke **server** (Vercel Blob); saat buka app, data diambil dari server. Cache kecil di browser hanya cadangan.
+- **Arsip setiap spin** — juga di server (CSV unduh di panel staf).
 
 Peluang menang mengikuti sisa stok. Hadiah yang habis hilang dari roda.
 

@@ -1,4 +1,5 @@
 import { list, put } from "@vercel/blob";
+import { mergeStoreStock } from "./state.js";
 
 const ARCHIVE_PATH = "spin-archive/entries.jsonl";
 const MAX_ROWS = 8000;
@@ -84,13 +85,17 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === "POST") {
-      const entry = req.body;
-      if (!validateEntry(entry)) {
+      const body = req.body;
+      if (!validateEntry(body)) {
         return res.status(400).json({ error: "invalid payload" });
       }
+      const { stockSnapshot, ...entry } = body;
       const rows = await readArchive();
       rows.push(entry);
       await writeArchive(rows);
+      if (stockSnapshot && typeof stockSnapshot === "object") {
+        await mergeStoreStock(entry.storeId, stockSnapshot);
+      }
       return res.status(201).json({ ok: true });
     }
 

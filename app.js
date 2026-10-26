@@ -19,6 +19,9 @@ const state = {
 };
 
 const ARCHIVE_API = "/api/spins";
+const STATE_API = "/api/state";
+let serverStateLoaded = false;
+let pushStateTimer = 0;
 
 const PALETTE = [
   ["#FF5A2C", "#FFF8F4"],
@@ -148,6 +151,79 @@ function persist() {
     stock: state.stock,
     history: state.history
   }));
+  schedulePushStateToServer();
+}
+
+function applyServerState(remote) {
+  if (!remote || remote.version !== 1) return false;
+  const hasStock = remote.stock && Object.keys(remote.stock).some(
+    (id) => remote.stock[id] && Object.keys(remote.stock[id]).length
+  );
+  const hasPrizes = remote.prizes && Object.keys(remote.prizes).some(
+    (id) => Array.isArray(remote.prizes[id]) && remote.prizes[id].length
+  );
+  if (!hasStock && !hasPrizes) return false;
+
+  if (hasPrizes) {
+    for (const storeId of Object.keys(STORES)) {
+      const rows = remote.prizes[storeId];
+      if (!Array.isArray(rows) || !rows.length) continue;
+      state.prizes[storeId] = rows.map((p, i) => ({
+        id: p.id,
+        name: p.name,
+        short: p.short || shortFromName(p.name),
+        stock: Number.isFinite(p.stock) ? p.stock : 0,
+        no: i + 1
+      }));
+    }
+  }
+  if (hasStock) {
+    for (const storeId of Object.keys(STORES)) {
+      if (!remote.stock[storeId]) continue;
+      state.stock[storeId] = { ...state.stock[storeId], ...remote.stock[storeId] };
+    }
+  }
+  return true;
+}
+
+async function pullStateFromServer() {
+  try {
+    const res = await fetch(STATE_API, { cache: "no-store" });
+    if (!res.ok) return;
+    const remote = await res.json();
+    if (applyServerState(remote)) {
+      serverStateLoaded = true;
+      localStorage.setItem(KEY, JSON.stringify({
+        pin: state.pin,
+        lock: state.lock,
+        choice: state.choice,
+        prizes: state.prizes,
+        stock: state.stock,
+        history: state.history
+      }));
+    }
+  } catch {
+    /* offline / GitHub Pages tanpa API */
+  }
+}
+
+function schedulePushStateToServer() {
+  if (pushStateTimer) clearTimeout(pushStateTimer);
+  pushStateTimer = setTimeout(() => { pushStateTimer = 0; pushStateToServer(); }, 500);
+}
+
+async function pushStateToServer() {
+  if (sessionStorage.getItem("cstore-staff") !== "1") return;
+  try {
+    const res = await fetch(`${STATE_API}?key=${encodeURIComponent(state.pin)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prizes: state.prizes, stock: state.stock })
+    });
+    if (!res.ok) console.warn("Sync stok server:", await res.text());
+  } catch (err) {
+    console.warn("Sync stok server gagal", err);
+  }
 }
 
 function buildSpinEntry(storeId, prize) {
@@ -170,7 +246,10 @@ async function pushSpinArchive(storeId, prize) {
     const res = await fetch(ARCHIVE_API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(buildSpinEntry(storeId, prize))
+      body: JSON.stringify({
+        ...buildSpinEntry(storeId, prize),
+        stockSnapshot: { ...state.stock[storeId] }
+      })
     });
     if (!res.ok) console.warn("Arsip server:", await res.text());
   } catch (err) {
@@ -762,7 +841,7 @@ resultDlg.addEventListener("close", () => {
   if (resultDlg.returnValue === "again" && activeStoreId() && !state.lock) spin();
 });
 
-document.getElementById("login").addEventListener("submit", (e) => {
+document.getElementById("login").addEventListener("submit", async (e) => {
   e.preventDefault();
   const value = document.getElementById("pin").value;
   const ok = value === state.pin;
@@ -770,6 +849,8 @@ document.getElementById("login").addEventListener("submit", (e) => {
   if (!ok) return;
   sessionStorage.setItem("cstore-staff", "1");
   document.getElementById("pin").value = "";
+  await pullStateFromServer();
+  await pushStateToServer();
   render();
 });
 
@@ -932,6 +1013,10 @@ window.addEventListener("hashchange", () => {
   persist();
   render();
 });
-applyHash();
-render();
-document.fonts.ready.then(loop);
+
+(async function bootstrap() {
+  await pullStateFromServer();
+  applyHash();
+  render();
+  document.fonts.ready.then(loop);
+})();
