@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const data = await loadGameState();
       res.setHeader("Cache-Control", "no-store");
-      return res.status(200).json(data);
+      return res.status(200).json({ ...data, storage: process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL ? "redis" : "blob" });
     }
 
     if (req.method === "PUT") {

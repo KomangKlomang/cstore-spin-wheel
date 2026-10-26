@@ -1,5 +1,6 @@
 import { readTextBlob, writeTextBlob } from "../lib/blob-json.js";
 import { mergeStoreStock, parseRequestJson } from "../lib/game-state-store.js";
+import { getArchiveRows, setArchiveRows, hasRedis } from "../lib/redis-store.js";
 
 const ARCHIVE_PATH = "cstore-spin-archive.jsonl";
 const MAX_ROWS = 8000;
@@ -47,12 +48,19 @@ function parseArchiveText(text) {
 }
 
 async function readArchive() {
+  if (hasRedis()) {
+    return await getArchiveRows();
+  }
   const text = await readTextBlob(ARCHIVE_PATH, "");
   return parseArchiveText(text);
 }
 
 async function writeArchive(rows) {
   const trimmed = rows.slice(-MAX_ROWS);
+  if (hasRedis()) {
+    await setArchiveRows(trimmed);
+    return trimmed;
+  }
   const body = trimmed.map((row) => JSON.stringify(row)).join("\n");
   await writeTextBlob(ARCHIVE_PATH, body);
   return trimmed;
