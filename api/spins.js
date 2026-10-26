@@ -1,7 +1,7 @@
 import { readTextBlob, writeTextBlob } from "../lib/blob-json.js";
 import { mergeStoreStock, parseRequestJson } from "../lib/game-state-store.js";
 
-const ARCHIVE_PATH = "spin-archive/entries.jsonl";
+const ARCHIVE_PATH = "cstore-spin-archive.jsonl";
 const MAX_ROWS = 8000;
 const STORES = new Set(["paskal", "taruma", "duyut", "kebonraya"]);
 
