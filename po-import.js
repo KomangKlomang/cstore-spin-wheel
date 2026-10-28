@@ -56,7 +56,7 @@ const PO_PRESET_002332 = `1 FG2133 FG GO SPIN WHEEL KAOS 5 Pcs
 const PO_PRESETS = [
   {
     id: "PO-G-26-10-20-002332",
-    label: "PO/G/26/10/20/002332 · Kebon Raya",
+    label: "PO/G/26/10/20/002332 · Kebon Raya / Soedarto",
     text: PO_PRESET_002332
   }
 ];

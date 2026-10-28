@@ -61,7 +61,8 @@ const STORES = {
   paskal: { name: "Paskal", prizes: pack(PASKAL_PRIZES) },
   taruma: { name: "Taruma", prizes: pack(DUYUT_PRIZES) },
   duyut: { name: "Duyut", prizes: pack(DUYUT_PRIZES) },
-  kebonraya: { name: "Kebon Raya", prizes: pack(KEBON_RAYA_PO) }
+  kebonraya: { name: "Kebon Raya", prizes: pack(KEBON_RAYA_PO) },
+  soedarto: { name: "Soedarto", prizes: pack(KEBON_RAYA_PO) }
 };
 
 const DEFAULT_PIN = "cstore";

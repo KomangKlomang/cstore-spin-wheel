@@ -15,7 +15,7 @@ const state = {
   choice: saved.choice || null,
   prizes: bootPrizes,
   stock: mergeStock(saved.stock, bootPrizes),
-  history: { paskal: [], taruma: [], duyut: [], kebonraya: [], ...saved.history }
+  history: { paskal: [], taruma: [], duyut: [], kebonraya: [], soedarto: [], ...saved.history }
 };
 
 const ARCHIVE_API = "/api/spins";
@@ -39,7 +39,8 @@ const STORE_ACCENT = {
   paskal: ["#FF5A2C", true],
   taruma: ["#FFC93C", false],
   duyut: ["#14B8B0", false],
-  kebonraya: ["#8B5CF6", false]
+  kebonraya: ["#8B5CF6", false],
+  soedarto: ["#EC4899", false]
 };
 const confetti = document.getElementById("confetti");
 const cctx = confetti.getContext("2d");
